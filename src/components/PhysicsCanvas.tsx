@@ -1,11 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Matter from 'matter-js';
-import { Eraser, Pen, Pin, ChevronLeft, ChevronRight } from 'lucide-react';
-
+import { Eraser, Pen, Pin, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+// 맵이 변할 때 마다 실행됨.
 const PhysicsCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef(Matter.Engine.create({
-    gravity: { x: 0, y: 1, scale: 0.001 }, // Reduced gravity for better control
+    gravity: { x: 0, y: 1, scale: 0.001 },
   }));
   const renderRef = useRef<Matter.Render>();
   const [tool, setTool] = useState<'pen' | 'eraser' | 'pin'>('pen');
@@ -13,6 +13,10 @@ const PhysicsCanvas: React.FC = () => {
   const [drawPoints, setDrawPoints] = useState<Matter.Vector[]>([]);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [gameEnded, setGameEnded] = useState(false);
+  const mapObjects = ['ground', 'tower1', 'tower2', 'tower3', 'tower4', 'tower5'];
+  const staticObjects = ['wall', 'ball', 'balloon'].concat(mapObjects);
+
+  const ballRef = useRef<Matter.Body | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -23,15 +27,18 @@ const PhysicsCanvas: React.FC = () => {
       options: {
         width: 800,
         height: 600,
+        hasBounds: true,
+        showCollisions: true,
         wireframes: false,
-        background: '#f0f9ff',
+        background: '#f8f4e3',
       },
     });
     renderRef.current = render;
 
+    engineRef.current.world.gravity.y = 0.1;
+
     const world = engineRef.current.world;
 
-    // Walls with high friction
     const wallOptions = {
       isStatic: true,
       label: 'wall',
@@ -41,10 +48,10 @@ const PhysicsCanvas: React.FC = () => {
     };
 
     const walls = [
-      Matter.Bodies.rectangle(400, 610, 810, 20, wallOptions), // bottom
-      Matter.Bodies.rectangle(400, -10, 810, 20, wallOptions), // top
-      Matter.Bodies.rectangle(-10, 300, 20, 620, wallOptions), // left
-      Matter.Bodies.rectangle(810, 300, 20, 620, wallOptions), // right
+      Matter.Bodies.rectangle(400, 610, 810, 20, wallOptions),
+      Matter.Bodies.rectangle(400, -10, 810, 20, wallOptions),
+      Matter.Bodies.rectangle(-10, 300, 20, 620, wallOptions),
+      Matter.Bodies.rectangle(810, 300, 20, 620, wallOptions),
     ];
 
     walls.forEach(wall => {
@@ -52,30 +59,35 @@ const PhysicsCanvas: React.FC = () => {
       wall.render.fillStyle = '#94a3b8';
     });
 
-    // Red ball (player) with improved physics properties
-    const ball = Matter.Bodies.circle(50, 300, 15, {
+    const ball = Matter.Bodies.circle(200, 300, 15, {
       render: { fillStyle: '#ef4444' },
-      label: 'player',
-      friction: 0.5,
-      frictionStatic: 0.7,
-      restitution: 0.5,
-      density: 0.01,
+      label: 'ball',
+      restitution: 0.6,
+      friction: 0.0005,
     });
-
-    // Yellow balloon (target)
-    const balloon = Matter.Bodies.circle(700, 300, 20, {
+    ballRef.current = ball;  // ballRef에 공을 할당하여 참조하도록 합니다
+    
+    const star = Matter.Bodies.trapezoid(600, 290, 20, 20, 1, {
       render: { fillStyle: '#fbbf24' },
-      label: 'balloon',
+      label: 'star',
       isStatic: true,
     });
 
-    Matter.World.add(world, [...walls, ball, balloon]);
+    // Add static bodies to represent the castle structure
+    const ground = Matter.Bodies.rectangle(400, 590, 810, 60, { isStatic: true, label: 'ground'});
+    const tower1 = Matter.Bodies.rectangle(200, 400, 50, 200, { isStatic: true, label: 'tower1'});
+    const tower2 = Matter.Bodies.rectangle(300, 400, 50, 200, { isStatic: true, label: 'tower2'});
+    const tower3 = Matter.Bodies.rectangle(400, 400, 50, 200, { isStatic: true, label: 'tower3' });
+    const tower4 = Matter.Bodies.rectangle(500, 400, 50, 200, { isStatic: true, label: 'tower4' });
+    const tower5 = Matter.Bodies.rectangle(600, 400, 50, 200, { isStatic: true, label: 'tower5' });
+
+    Matter.World.add(world, [ground, tower1, tower2, tower3, tower4, tower5, ...walls, ball, star]);
 
     Matter.Events.on(engineRef.current, 'collisionStart', (event) => {
       event.pairs.forEach((pair) => {
         if (
-          (pair.bodyA.label === 'player' && pair.bodyB.label === 'balloon') ||
-          (pair.bodyA.label === 'balloon' && pair.bodyB.label === 'player')
+          (pair.bodyA.label === 'ball' && pair.bodyB.label === 'star') ||
+          (pair.bodyA.label === 'star' && pair.bodyB.label === 'ball')
         ) {
           setGameEnded(true);
         }
@@ -94,16 +106,44 @@ const PhysicsCanvas: React.FC = () => {
 
   const createPhysicsBody = (points: Matter.Vector[]) => {
     if (points.length < 2) return null;
-
+    console.log("object generated");
+  
     // Simplify the path to reduce physics complexity
     const simplified = points.filter((point, index) => {
       if (index === 0 || index === points.length - 1) return true;
       const prev = points[index - 1];
       const dist = Math.hypot(point.x - prev.x, point.y - prev.y);
-      return dist > 10; // Only keep points that are more than 10px apart
+      return dist > 2;
     });
-
-    // Create a closed shape by connecting the points
+  
+    // Check if points are in a nearly straight line by comparing distances
+    if (simplified.length === 2) {
+      const [start, end] = simplified;
+      const distance = Math.hypot(end.x - start.x, end.y - start.y);
+      const angle = Math.atan2(end.y - start.y, end.x - start.x);
+  
+      // Create a thin rectangle to represent the line
+      return Matter.Bodies.rectangle(
+        (start.x + end.x) / 2, // Center X
+        (start.y + end.y) / 2, // Center Y
+        distance, // Width of the line (distance between points)
+        2, // Very small height to simulate a line
+        {
+          angle,
+          render: {
+            fillStyle: '#3b82f6',
+            strokeStyle: '#1d4ed8',
+            lineWidth: 1,
+          },
+          friction: 0.8,
+          frictionStatic: 1,
+          restitution: 0.2,
+          density: 0.01,
+        }
+      );
+    }
+  
+    // For shapes with more points, create a closed polygonal body
     const vertices = [...simplified];
     if (vertices.length >= 3) {
       const bodyOptions = {
@@ -112,19 +152,25 @@ const PhysicsCanvas: React.FC = () => {
           strokeStyle: '#1d4ed8',
           lineWidth: 1,
         },
-        friction: 0.8, // High friction to prevent sliding
-        frictionStatic: 1, // High static friction
-        restitution: 0.2, // Low bounciness
-        density: 0.01, // Lower density for better stacking
+        friction: 0.8,
+        frictionStatic: 1,
+        restitution: 0.2,
+        density: 0.01,
       };
-
-      return Matter.Bodies.fromVertices(
-        vertices[0].x,
-        vertices[0].y,
-        [vertices],
-        bodyOptions
-      );
+  
+      // Use the center of mass as the initial position
+      const centroidX = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
+      const centroidY = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
+  
+      const translatedVertices = vertices.map(v => ({
+        x: v.x - centroidX,
+        y: v.y - centroidY,
+      }));
+  
+      const body = Matter.Bodies.fromVertices(centroidX, centroidY, [translatedVertices], bodyOptions);
+      return body;
     }
+  
     return null;
   };
 
@@ -132,6 +178,10 @@ const PhysicsCanvas: React.FC = () => {
     if (!canvasRef.current) return;
     
     const rect = canvasRef.current.getBoundingClientRect();
+    // console.log("rect.left: ", rect.left)
+    // console.log("rect.right: ", rect.right)
+    // console.log("rect.top: ", rect.top)
+    // console.log("rect.bottom: ", rect.bottom)
     const point = {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
@@ -143,9 +193,7 @@ const PhysicsCanvas: React.FC = () => {
       
       for (let body of bodies) {
         if (Matter.Bounds.contains(body.bounds, mousePosition) &&
-            body.label !== 'wall' &&
-            body.label !== 'player' &&
-            body.label !== 'balloon') {
+            !staticObjects.includes(body.label)) {
           Matter.World.remove(engineRef.current.world, body);
           break;
         }
@@ -159,35 +207,83 @@ const PhysicsCanvas: React.FC = () => {
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing || !canvasRef.current || tool === 'eraser') return;
-
+  
     const rect = canvasRef.current.getBoundingClientRect();
-    const point = {
+    let point = {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     };
+    // console.log("point.y: ", point.y)
+    // console.log("rect.left: ", rect.left)
+    // console.log("rect.right: ", rect.right)
+    // console.log("rect.top: ", rect.top)
+    // console.log("rect.bottom: ", rect.bottom)
+  
+    // // 캔버스 경계 안에 point를 제한
+    // point = {
+    //   x: Math.max(0, Math.min(point.x, 802)), 
+    //   y: Math.max(0, Math.min(point.y, 602)), 
+    // };
 
-    // Only add point if it's far enough from the last point
+    // 캔버스 경계 안에 point를 제한
+    point = {
+      x: Math.max(0, Math.min(point.x, rect.width)), 
+      y: Math.max(0, Math.min(point.y, rect.height)), 
+    };
+  
+    // 벽과의 충돌 감지
+    const bodies = Matter.Query.point(Matter.Composite.allBodies(engineRef.current.world), point);
+    const collidedWall = bodies.find(body => body.label === 'wall');
+    // console.log("collidedWall: ", collidedWall)
+  
+    if (collidedWall) {
+      // 충돌한 벽의 경계 찾기
+      const bounds = collidedWall.bounds;
+  
+      // 벽의 각 변과 점 사이의 거리 계산
+      const distances = [
+        Math.abs(point.x - bounds.min.x), // 왼쪽 변
+        Math.abs(point.x - bounds.max.x), // 오른쪽 변
+        Math.abs(point.y - bounds.min.y), // 위쪽 변
+        Math.abs(point.y - bounds.max.y), // 아래쪽 변
+      ];
+  
+      // 가장 가까운 변 찾기
+      const minDistance = Math.min(...distances);
+      // console.log("minDistance: ", minDistance)
+      const threshold = 5; // 벽과의 거리 임계값
+  
+      if (minDistance < threshold) {
+      if (distances[0] === minDistance) point.x = bounds.min.x; // 왼쪽 변
+      else if (distances[1] === minDistance) point.x = bounds.max.x; // 오른쪽 변
+      else if (distances[2] === minDistance) point.y = bounds.min.y; // 위쪽 변
+      else if (distances[3] === minDistance) point.y = bounds.max.y; // 아래쪽 변
+      }
+    }
+  
     const lastPoint = drawPoints[drawPoints.length - 1];
+    // console.log("lastPoint: ", lastPoint)
     const dist = Math.hypot(point.x - lastPoint.x, point.y - lastPoint.y);
-    if (dist > 5) { // Minimum distance between points
+  
+    if (dist > 5) {
       setDrawPoints(prev => [...prev, point]);
     }
   };
-
+  
   const handleMouseUp = () => {
     if (tool === 'eraser' || drawPoints.length < 2) {
       setIsDrawing(false);
       setDrawPoints([]);
       return;
     }
-
+  
     if (tool === 'pen') {
       const body = createPhysicsBody(drawPoints);
       if (body) {
         Matter.World.add(engineRef.current.world, body);
       }
     }
-
+  
     setIsDrawing(false);
     setDrawPoints([]);
   };
@@ -205,6 +301,12 @@ const PhysicsCanvas: React.FC = () => {
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex gap-4 mb-4">
+        <button
+          onClick={() => window.location.reload()}
+          className={`p-2 rounded 'bg-gray-200'`}
+        >
+          <RefreshCw size={24} />
+        </button>
         <button
           onClick={() => handleToolChange('pen')}
           className={`p-2 rounded ${
