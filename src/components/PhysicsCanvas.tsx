@@ -15,6 +15,7 @@ const PhysicsCanvas: React.FC = () => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawPoints, setDrawPoints] = useState<Matter.Vector[]>([]);
   const [currentLevel, setCurrentLevel] = useState(1);
+  const [resetTrigger, setResetTrigger] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
   const [stageMessage, setStageMessage] = useState(''); // 메시지 상태 추가
 
@@ -88,7 +89,7 @@ const PhysicsCanvas: React.FC = () => {
       
       const star = Matter.Bodies.trapezoid(600, 290, 20, 20, 1, {
         render: { fillStyle: '#fbbf24' },
-        label: 'star',
+        label: 'balloon',
         isStatic: true,
       });
   
@@ -197,7 +198,7 @@ const PhysicsCanvas: React.FC = () => {
       Matter.World.clear(world, false);
       Matter.Engine.clear(engineRef.current);
     };
-  }, [currentLevel]);
+  }, [currentLevel, resetTrigger]);
 
   
 
@@ -429,11 +430,159 @@ const PhysicsCanvas: React.FC = () => {
     }
   };
 
+  const handleNextLevel = () => {
+    if (currentLevel < TOTAL_LEVELS) {
+      setCurrentLevel((prevLevel) => prevLevel + 1)
+      setGameEnded(false); // 게임 종료 상태 초기화
+    } else {
+      setCurrentLevel((prevLevel) => prevLevel)
+      setGameEnded(false); // 게임 종료 상태 초기화
+    }
+  }
+
+  const resetLevel = () => {
+    setResetTrigger((prev) => !prev);
+
+    // 월드와 렌더를 정지하고 지운 후, 다시 설정
+    const world = engineRef.current.world;
+    Matter.World.clear(world, false);
+    Matter.Engine.clear(engineRef.current);
+  
+    // 맵 초기화 - 렌더도 초기화하여 재설정
+    if (renderRef.current) {
+      Matter.Render.stop(renderRef.current);
+      Matter.Render.run(renderRef.current);
+    }
+    
+    // 현재 레벨에 대한 설정을 다시 불러옴
+    setCurrentLevel(currentLevel); // 이로 인해 useEffect가 실행됨
+
+    // if (!canvasRef.current) return;
+
+    // const render = Matter.Render.create({
+    //   canvas: canvasRef.current,
+    //   engine: engineRef.current,
+    //   options: {
+    //     width: 800,
+    //     height: 600,
+    //     // hasBounds: true,
+    //     // showCollisions: true,
+    //     wireframes: false,
+    //     background: '#f8f4e3',
+    //   },
+    // });
+    // renderRef.current = render;
+
+    // engineRef.current.world.gravity.y = 0.1;
+
+    // const world = engineRef.current.world;
+    
+    // // 월드 초기화
+    // Matter.World.clear(world, false);
+
+    // // 레벨에 따른 설정
+    // if (currentLevel === 1) {
+    //   // 레벨 1 기본 설정
+    //   const wallOptions = {
+    //     isStatic: true,
+    //     label: 'wall',
+    //     friction: 1,
+    //     frictionStatic: 1,
+    //     restitution: 0.2,
+    //   };
+  
+    //   const walls = [
+    //     Matter.Bodies.rectangle(400, 610, 810, 20, wallOptions),
+    //     Matter.Bodies.rectangle(400, -10, 810, 20, wallOptions),
+    //     Matter.Bodies.rectangle(-10, 300, 20, 620, wallOptions),
+    //     Matter.Bodies.rectangle(810, 300, 20, 620, wallOptions),
+    //   ];
+  
+    //   walls.forEach(wall => {
+    //     Matter.Body.setStatic(wall, true);
+    //     wall.render.fillStyle = '#94a3b8';
+    //   });
+  
+    //   const ball = Matter.Bodies.circle(200, 300, 15, {
+    //     render: { fillStyle: '#ef4444' },
+    //     label: 'ball',
+    //     restitution: 0.3, // 반발 계수: 공이 튀어오르는 정도
+    //     friction: 0.05, // 마찰력
+    //     frictionAir: 0.01 // 공중에서의 저항
+    //   });
+    //   ballRef.current = ball;  // ballRef에 공을 할당하여 참조하도록 합니다
+      
+    //   const star = Matter.Bodies.trapezoid(600, 290, 20, 20, 1, {
+    //     render: { fillStyle: '#fbbf24' },
+    //     label: 'balloon',
+    //     isStatic: true,
+    //   });
+  
+    //   // Add static bodies to represent the castle structure
+    //   const ground = Matter.Bodies.rectangle(400, 590, 810, 60, { isStatic: true, label: 'ground'});
+    //   const tower1 = Matter.Bodies.rectangle(200, 400, 50, 200, { isStatic: true, label: 'tower1'});
+    //   const tower2 = Matter.Bodies.rectangle(300, 400, 50, 200, { isStatic: true, label: 'tower2'});
+    //   const tower3 = Matter.Bodies.rectangle(400, 400, 50, 200, { isStatic: true, label: 'tower3' });
+    //   const tower4 = Matter.Bodies.rectangle(500, 400, 50, 200, { isStatic: true, label: 'tower4' });
+    //   const tower5 = Matter.Bodies.rectangle(600, 400, 50, 200, { isStatic: true, label: 'tower5' });
+  
+    //   Matter.World.add(world, [ground, tower1, tower2, tower3, tower4, tower5, ...walls, ball, star]);
+    // } else if (currentLevel === 2) {
+    //   // 레벨 2 설정 - 두 번째 사진 기반
+    //   const walls = [
+    //     Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall' }),
+    //     Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
+    //     Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
+    //     Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
+    //   ];
+  
+    //   // 공 (ball)과 별 (balloon) 위치 설정
+    //   const ball = Matter.Bodies.circle(400, 400, 15, {
+    //     render: { fillStyle: '#ef4444' },
+    //     label: 'ball',
+    //     restitution: 0.3,
+    //     friction: 0.05,
+    //     frictionAir: 0.01,
+    //   });
+
+    //   const star = Matter.Bodies.trapezoid(600, 550, 20, 20, 1, {
+    //     render: { fillStyle: '#fbbf24' },
+    //     label: 'balloon',
+    //     isStatic: true,
+    //   });
+  
+    //   // 맵 내 정적 객체 생성
+    //   const base = Matter.Bodies.rectangle(400, 580, 100, 20, { isStatic: true, label: 'base' });
+    //   const pedestal = Matter.Bodies.rectangle(400, 500, 50, 100, { isStatic: true, label: 'pedestal' });
+  
+    //   Matter.World.add(world, [ball, star, base, pedestal, ...walls]);
+    //   ballRef.current = ball;
+    // }
+
+    // Matter.Events.on(engineRef.current, 'collisionStart', (event) => {
+    //   event.pairs.forEach((pair) => {
+    //     if (
+    //       (pair.bodyA.label === 'ball' && pair.bodyB.label === 'balloon') ||
+    //       (pair.bodyA.label === 'balloon' && pair.bodyB.label === 'ball')
+    //     ) {
+    //       setGameEnded(true);
+    //     }
+    //   });
+    // });
+
+    // Matter.Runner.run(engineRef.current);
+    // Matter.Render.run(render);
+
+    // Matter.Render.stop(render);
+    // Matter.World.clear(world, false);
+    // Matter.Engine.clear(engineRef.current);
+  };
+
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex gap-4 mb-4">
         <button
-          onClick={() => window.location.reload()}
+          onClick={() => resetLevel()}
           className={`p-2 rounded 'bg-gray-200'`}
         >
           <RefreshCw size={24} />
@@ -520,10 +669,10 @@ const PhysicsCanvas: React.FC = () => {
             <div className="bg-white p-8 rounded-lg shadow-xl">
               <h2 className="text-3xl font-bold text-center mb-4">End of Game!</h2>
               <button
-                onClick={() => setCurrentLevel((prevLevel) => prevLevel + 1)}
+                onClick={() => handleNextLevel()}
                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
               >
-                Next Level
+                {currentLevel < TOTAL_LEVELS ? 'Next Level' : 'Okay'}
               </button>
             </div>
           </div>
@@ -541,7 +690,8 @@ const PhysicsCanvas: React.FC = () => {
         <span className="py-2 px-4 bg-gray-100 rounded">Level {currentLevel}</span>
         <button
           onClick={() => handleLevelChange('next')}
-          className="p-2 rounded bg-gray-200"
+          disabled={currentLevel === TOTAL_LEVELS}
+          className="p-2 rounded bg-gray-200 disabled:opacity-50"
         >
           <ChevronRight size={24} />
         </button>
