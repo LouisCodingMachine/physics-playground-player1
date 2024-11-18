@@ -17,18 +17,10 @@ const PhysicsCanvas: React.FC = () => {
   const [currentLevel, setCurrentLevel] = useState(1);
   const [resetTrigger, setResetTrigger] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
-  const [stageMessage, setStageMessage] = useState(''); // 메시지 상태 추가
-
+  const initialBallPositionRef = useRef({ x: 0, y: 0 }); // 공 초기 위치 저장
   const mapObjects = ['ground', 'tower1', 'tower2', 'tower3', 'tower4', 'tower5'];
   const staticObjects = ['wall', 'ball', 'balloon'].concat(mapObjects);
-
   const ballRef = useRef<Matter.Body | null>(null);
-
-  // 메시지를 잠시 보여주고 자동으로 제거하는 함수
-  const showTemporaryMessage = (message: string) => {
-    setStageMessage(message);
-    setTimeout(() => setStageMessage(''), 2000); // 2초 후 메시지 제거
-  };
 
 
   useEffect(() => {
@@ -67,7 +59,7 @@ const PhysicsCanvas: React.FC = () => {
       };
   
       const walls = [
-        Matter.Bodies.rectangle(400, 610, 810, 20, wallOptions),
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
         Matter.Bodies.rectangle(400, -10, 810, 20, wallOptions),
         Matter.Bodies.rectangle(-10, 300, 20, 620, wallOptions),
         Matter.Bodies.rectangle(810, 300, 20, 620, wallOptions),
@@ -86,6 +78,7 @@ const PhysicsCanvas: React.FC = () => {
         frictionAir: 0.01 // 공중에서의 저항
       });
       ballRef.current = ball;  // ballRef에 공을 할당하여 참조하도록 합니다
+      initialBallPositionRef.current = { x: 200, y: 300 }
       
       const star = Matter.Bodies.trapezoid(600, 290, 20, 20, 1, {
         render: { fillStyle: '#fbbf24' },
@@ -94,18 +87,19 @@ const PhysicsCanvas: React.FC = () => {
       });
   
       // Add static bodies to represent the castle structure
-      const ground = Matter.Bodies.rectangle(400, 590, 810, 60, { isStatic: true, label: 'ground'});
+      // const ground = Matter.Bodies.rectangle(400, 590, 810, 60, { isStatic: true, label: 'ground'});
       const tower1 = Matter.Bodies.rectangle(200, 400, 50, 200, { isStatic: true, label: 'tower1'});
       const tower2 = Matter.Bodies.rectangle(300, 400, 50, 200, { isStatic: true, label: 'tower2'});
       const tower3 = Matter.Bodies.rectangle(400, 400, 50, 200, { isStatic: true, label: 'tower3' });
       const tower4 = Matter.Bodies.rectangle(500, 400, 50, 200, { isStatic: true, label: 'tower4' });
       const tower5 = Matter.Bodies.rectangle(600, 400, 50, 200, { isStatic: true, label: 'tower5' });
   
-      Matter.World.add(world, [ground, tower1, tower2, tower3, tower4, tower5, ...walls, ball, star]);
+      // Matter.World.add(world, [ground, tower1, tower2, tower3, tower4, tower5, ...walls, ball, star]);
+      Matter.World.add(world, [tower1, tower2, tower3, tower4, tower5, ...walls, ball, star]);
     } else if (currentLevel === 2) {
       // 레벨 2 설정 - 두 번째 사진 기반
       const walls = [
-        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
         Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
         Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
         Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
@@ -119,6 +113,7 @@ const PhysicsCanvas: React.FC = () => {
         friction: 0.05,
         frictionAir: 0.01,
       });
+      initialBallPositionRef.current = { x: 400, y: 400 }
 
       const star = Matter.Bodies.trapezoid(600, 550, 20, 20, 1, {
         render: { fillStyle: '#fbbf24' },
@@ -134,51 +129,6 @@ const PhysicsCanvas: React.FC = () => {
       ballRef.current = ball;
     }
 
-    // const wallOptions = {
-    //   isStatic: true,
-    //   label: 'wall',
-    //   friction: 1,
-    //   frictionStatic: 1,
-    //   restitution: 0.2,
-    // };
-
-    // const walls = [
-    //   Matter.Bodies.rectangle(400, 610, 810, 20, wallOptions),
-    //   Matter.Bodies.rectangle(400, -10, 810, 20, wallOptions),
-    //   Matter.Bodies.rectangle(-10, 300, 20, 620, wallOptions),
-    //   Matter.Bodies.rectangle(810, 300, 20, 620, wallOptions),
-    // ];
-
-    // walls.forEach(wall => {
-    //   Matter.Body.setStatic(wall, true);
-    //   wall.render.fillStyle = '#94a3b8';
-    // });
-
-    // const ball = Matter.Bodies.circle(200, 300, 15, {
-    //   render: { fillStyle: '#ef4444' },
-    //   label: 'ball',
-    //   restitution: 0.3, // 반발 계수: 공이 튀어오르는 정도
-    //   friction: 0.05, // 마찰력
-    //   frictionAir: 0.01 // 공중에서의 저항
-    // });
-    // ballRef.current = ball;  // ballRef에 공을 할당하여 참조하도록 합니다
-    
-    // const star = Matter.Bodies.trapezoid(600, 290, 20, 20, 1, {
-    //   render: { fillStyle: '#fbbf24' },
-    //   label: 'star',
-    //   isStatic: true,
-    // });
-
-    // // Add static bodies to represent the castle structure
-    // const ground = Matter.Bodies.rectangle(400, 590, 810, 60, { isStatic: true, label: 'ground'});
-    // const tower1 = Matter.Bodies.rectangle(200, 400, 50, 200, { isStatic: true, label: 'tower1'});
-    // const tower2 = Matter.Bodies.rectangle(300, 400, 50, 200, { isStatic: true, label: 'tower2'});
-    // const tower3 = Matter.Bodies.rectangle(400, 400, 50, 200, { isStatic: true, label: 'tower3' });
-    // const tower4 = Matter.Bodies.rectangle(500, 400, 50, 200, { isStatic: true, label: 'tower4' });
-    // const tower5 = Matter.Bodies.rectangle(600, 400, 50, 200, { isStatic: true, label: 'tower5' });
-
-    // Matter.World.add(world, [ground, tower1, tower2, tower3, tower4, tower5, ...walls, ball, star]);
-
     Matter.Events.on(engineRef.current, 'collisionStart', (event) => {
       event.pairs.forEach((pair) => {
         if (
@@ -186,6 +136,62 @@ const PhysicsCanvas: React.FC = () => {
           (pair.bodyA.label === 'balloon' && pair.bodyB.label === 'ball')
         ) {
           setGameEnded(true);
+        }
+      });
+    });
+
+    // 공이 wall_bottom 아래로 떨어졌는지 확인
+    Matter.Events.on(engineRef.current, 'afterUpdate', () => {
+      const threshold = 40; // 공 및 사물 삭제 기준 높이
+      const world = engineRef.current.world;
+
+      // wall_bottom을 초기화 시점에 찾음
+      const wallBottom = Matter.Composite.allBodies(world).find((body) => body.label === 'wall_bottom');
+      if (!wallBottom) {
+        console.error('Wall bottom not found!');
+        return;
+      }
+      const bodies = Matter.Composite.allBodies(world);
+
+      if (ballRef.current) {
+        const ball = ballRef.current;
+        const wallBottom = Matter.Composite.allBodies(world).find(
+          (body) => body.label === 'wall_bottom'
+        );
+    
+        if (!wallBottom) {
+          console.error('Wall bottom not found!');
+          return;
+        }
+    
+        // console.log(`Ball Y: ${ball.position.y}, Wall Bottom Max Y: ${wallBottom.bounds.max.y}`);
+        // console.log(`Ball X: ${ball.position.x}, Ball Y: ${ball.position.y}`);
+        // const threshold = 40;
+        // console.log("currentLevel: ", currentLevel)
+        if (ball.position.y > wallBottom.bounds.max.y - threshold) {
+          // console.log('Ball fell below the wall. Resetting position.');
+          // 초기 위치로 이동
+          Matter.Body.setPosition(ball, initialBallPositionRef.current);
+        }
+      }
+
+      // 사용자 사물이 화면 아래로 떨어지면 서서히 삭제
+      bodies.forEach((body) => {
+        const wallBottom = bodies.find((b) => b.label === 'wall_bottom');
+        if (!wallBottom) return;
+
+        // 충돌한 사물의 `opacity` 감소
+        if (!staticObjects.includes(body.label) && !body.isStatic) {
+          const isTouchingFloor = Matter.SAT.collides(body, wallBottom)?.collided;
+
+          if (isTouchingFloor) {
+            body.render.opacity = body.render.opacity ?? 1; // 초기값 설정
+            body.render.opacity -= 0.01; // 점진적으로 투명도 감소
+
+            if (body.render.opacity <= 0) {
+              Matter.World.remove(world, body); // 완전히 투명해지면 제거
+            }
+          }
         }
       });
     });
@@ -233,6 +239,7 @@ const PhysicsCanvas: React.FC = () => {
             strokeStyle: '#1d4ed8',
             lineWidth: 1,
           },
+          isStatic: false, // 사물이 떨어지도록 설정
           friction: 0.8,
           frictionStatic: 1,
           restitution: 0.2,
@@ -250,6 +257,7 @@ const PhysicsCanvas: React.FC = () => {
           strokeStyle: '#1d4ed8',
           lineWidth: 1,
         },
+        isStatic: false, // 사물이 떨어지도록 설정
         friction: 0.8,
         frictionStatic: 1,
         restitution: 0.2,
@@ -419,13 +427,13 @@ const PhysicsCanvas: React.FC = () => {
         setCurrentLevel(prev => prev + 1);
         setGameEnded(false); // 게임 종료 상태 초기화
       } else {
-        showTemporaryMessage("실험이 마지막 스테이지입니다");
+        // showTemporaryMessage("실험이 마지막 스테이지입니다");
       }
     } else {
       if (currentLevel > 1) {
         setCurrentLevel(prev => prev - 1);
       } else {
-        showTemporaryMessage("첫 스테이지입니다");
+        // showTemporaryMessage("첫 스테이지입니다");
       }
     }
   };
@@ -456,126 +464,6 @@ const PhysicsCanvas: React.FC = () => {
     
     // 현재 레벨에 대한 설정을 다시 불러옴
     setCurrentLevel(currentLevel); // 이로 인해 useEffect가 실행됨
-
-    // if (!canvasRef.current) return;
-
-    // const render = Matter.Render.create({
-    //   canvas: canvasRef.current,
-    //   engine: engineRef.current,
-    //   options: {
-    //     width: 800,
-    //     height: 600,
-    //     // hasBounds: true,
-    //     // showCollisions: true,
-    //     wireframes: false,
-    //     background: '#f8f4e3',
-    //   },
-    // });
-    // renderRef.current = render;
-
-    // engineRef.current.world.gravity.y = 0.1;
-
-    // const world = engineRef.current.world;
-    
-    // // 월드 초기화
-    // Matter.World.clear(world, false);
-
-    // // 레벨에 따른 설정
-    // if (currentLevel === 1) {
-    //   // 레벨 1 기본 설정
-    //   const wallOptions = {
-    //     isStatic: true,
-    //     label: 'wall',
-    //     friction: 1,
-    //     frictionStatic: 1,
-    //     restitution: 0.2,
-    //   };
-  
-    //   const walls = [
-    //     Matter.Bodies.rectangle(400, 610, 810, 20, wallOptions),
-    //     Matter.Bodies.rectangle(400, -10, 810, 20, wallOptions),
-    //     Matter.Bodies.rectangle(-10, 300, 20, 620, wallOptions),
-    //     Matter.Bodies.rectangle(810, 300, 20, 620, wallOptions),
-    //   ];
-  
-    //   walls.forEach(wall => {
-    //     Matter.Body.setStatic(wall, true);
-    //     wall.render.fillStyle = '#94a3b8';
-    //   });
-  
-    //   const ball = Matter.Bodies.circle(200, 300, 15, {
-    //     render: { fillStyle: '#ef4444' },
-    //     label: 'ball',
-    //     restitution: 0.3, // 반발 계수: 공이 튀어오르는 정도
-    //     friction: 0.05, // 마찰력
-    //     frictionAir: 0.01 // 공중에서의 저항
-    //   });
-    //   ballRef.current = ball;  // ballRef에 공을 할당하여 참조하도록 합니다
-      
-    //   const star = Matter.Bodies.trapezoid(600, 290, 20, 20, 1, {
-    //     render: { fillStyle: '#fbbf24' },
-    //     label: 'balloon',
-    //     isStatic: true,
-    //   });
-  
-    //   // Add static bodies to represent the castle structure
-    //   const ground = Matter.Bodies.rectangle(400, 590, 810, 60, { isStatic: true, label: 'ground'});
-    //   const tower1 = Matter.Bodies.rectangle(200, 400, 50, 200, { isStatic: true, label: 'tower1'});
-    //   const tower2 = Matter.Bodies.rectangle(300, 400, 50, 200, { isStatic: true, label: 'tower2'});
-    //   const tower3 = Matter.Bodies.rectangle(400, 400, 50, 200, { isStatic: true, label: 'tower3' });
-    //   const tower4 = Matter.Bodies.rectangle(500, 400, 50, 200, { isStatic: true, label: 'tower4' });
-    //   const tower5 = Matter.Bodies.rectangle(600, 400, 50, 200, { isStatic: true, label: 'tower5' });
-  
-    //   Matter.World.add(world, [ground, tower1, tower2, tower3, tower4, tower5, ...walls, ball, star]);
-    // } else if (currentLevel === 2) {
-    //   // 레벨 2 설정 - 두 번째 사진 기반
-    //   const walls = [
-    //     Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall' }),
-    //     Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
-    //     Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
-    //     Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
-    //   ];
-  
-    //   // 공 (ball)과 별 (balloon) 위치 설정
-    //   const ball = Matter.Bodies.circle(400, 400, 15, {
-    //     render: { fillStyle: '#ef4444' },
-    //     label: 'ball',
-    //     restitution: 0.3,
-    //     friction: 0.05,
-    //     frictionAir: 0.01,
-    //   });
-
-    //   const star = Matter.Bodies.trapezoid(600, 550, 20, 20, 1, {
-    //     render: { fillStyle: '#fbbf24' },
-    //     label: 'balloon',
-    //     isStatic: true,
-    //   });
-  
-    //   // 맵 내 정적 객체 생성
-    //   const base = Matter.Bodies.rectangle(400, 580, 100, 20, { isStatic: true, label: 'base' });
-    //   const pedestal = Matter.Bodies.rectangle(400, 500, 50, 100, { isStatic: true, label: 'pedestal' });
-  
-    //   Matter.World.add(world, [ball, star, base, pedestal, ...walls]);
-    //   ballRef.current = ball;
-    // }
-
-    // Matter.Events.on(engineRef.current, 'collisionStart', (event) => {
-    //   event.pairs.forEach((pair) => {
-    //     if (
-    //       (pair.bodyA.label === 'ball' && pair.bodyB.label === 'balloon') ||
-    //       (pair.bodyA.label === 'balloon' && pair.bodyB.label === 'ball')
-    //     ) {
-    //       setGameEnded(true);
-    //     }
-    //   });
-    // });
-
-    // Matter.Runner.run(engineRef.current);
-    // Matter.Render.run(render);
-
-    // Matter.Render.stop(render);
-    // Matter.World.clear(world, false);
-    // Matter.Engine.clear(engineRef.current);
   };
 
   return (
