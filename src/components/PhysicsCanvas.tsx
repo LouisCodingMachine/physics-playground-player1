@@ -473,6 +473,13 @@ const PhysicsCanvas: React.FC = () => {
           // console.log('Ball fell below the wall. Resetting position.');
           // 초기 위치로 이동
           Matter.Body.setPosition(ball, initialBallPositionRef.current);
+
+          // 속도 초기화
+          Matter.Body.setVelocity(ball, { x: 0, y: 0 });
+
+          // 힘 초기화 (필요하면 추가)
+          Matter.Body.setAngularVelocity(ball, 0);
+          Matter.Body.applyForce(ball, ball.position, { x: 0, y: 0 });
         }
       }
 
