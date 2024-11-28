@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Matter from 'matter-js';
 import { Eraser, Pen, Pin, ChevronLeft, ChevronRight, RefreshCw, Hand, Circle } from 'lucide-react';
 
-const TOTAL_LEVELS = 2; // 총 스테이지 수를 정의합니다.
+const TOTAL_LEVELS = 7; // 총 스테이지 수를 정의합니다.
 
 // 맵이 변할 때 마다 실행됨.
 const PhysicsCanvas: React.FC = () => {
@@ -126,6 +126,307 @@ const PhysicsCanvas: React.FC = () => {
       const pedestal = Matter.Bodies.rectangle(400, 500, 50, 100, { isStatic: true, label: 'pedestal' });
   
       Matter.World.add(world, [ball, star, base, pedestal, ...walls]);
+      ballRef.current = ball;
+    } else if (currentLevel === 3) {
+      const walls = [
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
+        Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      ];
+    
+      const ball = Matter.Bodies.circle(400, 100, 15, {
+        render: { fillStyle: '#ef4444' },
+        label: 'ball',
+        restitution: 0.3,
+        friction: 0.05,
+        frictionAir: 0.01,
+      });
+      initialBallPositionRef.current = { x: 400, y: 100 };
+    
+      const star = Matter.Bodies.trapezoid(400, 350, 20, 20, 1, {
+        render: { fillStyle: '#fbbf24' },
+        label: 'balloon',
+        isStatic: true,
+      });
+    
+      const topBar = Matter.Bodies.rectangle(400, 200, 150, 10, {
+        isStatic: true,
+        label: 'top_bar',
+        render: { fillStyle: '#6b7280' },
+      });
+    
+      const verticalBar = Matter.Bodies.rectangle(400, 250, 10, 100, {
+        isStatic: true,
+        label: 'vertical_bar',
+        render: { fillStyle: '#6b7280' },
+      });
+    
+      const redBox = Matter.Bodies.rectangle(400, 375, 30, 30, {
+        isStatic: true,
+        label: 'red_box',
+        render: { fillStyle: '#ef4444' },
+      });
+
+      const leftUpGreenPlatform = Matter.Bodies.rectangle(200, 300, 60, 10, {
+        isStatic: true,
+        label: 'left_up_green_platform',
+        render: { fillStyle: '#10b981' },
+      });
+    
+      const leftDownGreenPlatform = Matter.Bodies.rectangle(250, 500, 60, 10, {
+        isStatic: true,
+        label: 'left_down_green_platform',
+        render: { fillStyle: '#10b981' },
+      });
+    
+      const rightUpGreenPlatform = Matter.Bodies.rectangle(550, 300, 60, 10, {
+        isStatic: true,
+        label: 'right_green_platform',
+        render: { fillStyle: '#10b981' },
+      });
+
+      const rightDownGreenPlatform = Matter.Bodies.rectangle(500, 500, 60, 10, {
+        isStatic: true,
+        label: 'right_green_platform',
+        render: { fillStyle: '#10b981' },
+      });
+    
+      Matter.World.add(world, [
+        ...walls,
+        ball,
+        star,
+        topBar,
+        verticalBar,
+        redBox,
+        leftUpGreenPlatform,
+        leftDownGreenPlatform,
+        rightUpGreenPlatform,
+        rightDownGreenPlatform,
+      ]);
+      ballRef.current = ball;
+    } else if (currentLevel === 4) {
+      const walls = [
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
+        Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall_top' }),
+        Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall_left' }),
+        Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall_right' }),
+      ];
+    
+      // Ball starting position
+      const ball = Matter.Bodies.circle(100, 300, 15, {
+        render: { fillStyle: '#ef4444' },
+        label: 'ball',
+        restitution: 0.3,
+        friction: 0.05,
+        frictionAir: 0.01,
+      });
+      initialBallPositionRef.current = { x: 100, y: 300 };
+    
+      // Star (goal) position
+      const star = Matter.Bodies.trapezoid(650, 520, 20, 20, 1, {
+        render: { fillStyle: '#fbbf24' },
+        label: 'balloon',
+        isStatic: true,
+      });
+    
+      // U-shaped red platform
+      const leftVerticalWall = Matter.Bodies.rectangle(600, 335, 40, 450, {
+        isStatic: true,
+        label: 'left_red_wall',
+        render: { fillStyle: '#ef4444' },
+      });
+      const rightVerticalWall = Matter.Bodies.rectangle(700, 335, 40, 450, {
+        isStatic: true,
+        label: 'right_red_wall',
+        render: { fillStyle: '#ef4444' },
+      });
+      const bottomHorizontalWall = Matter.Bodies.rectangle(650, 550, 140, 30, {
+        isStatic: true,
+        label: 'bottom_red_wall',
+        render: { fillStyle: '#ef4444' },
+      });
+    
+      Matter.World.add(world, [
+        ...walls,
+        ball,
+        star,
+        leftVerticalWall,
+        rightVerticalWall,
+        bottomHorizontalWall,
+      ]);
+      ballRef.current = ball;
+    } else if (currentLevel === 5) {
+      const walls = [
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }), // 바닥
+        Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall_top' }), // 상단
+        Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall_left' }), // 왼쪽 벽
+        Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall_right' }), // 오른쪽 벽
+      ];
+    
+      // 공 설정 (초기 위치와 속성)
+      const ball = Matter.Bodies.circle(500, 250, 15, {
+        render: { fillStyle: '#ef4444' },
+        label: 'ball',
+        restitution: 0.3, // 반발 계수
+        friction: 0.05,
+        frictionAir: 0.01,
+      });
+      initialBallPositionRef.current = { x: 500, y: 250 };
+    
+      // 별 설정 (왼쪽 위 플랫폼 위)
+      const star = Matter.Bodies.polygon(150, 310, 5, 15, {
+        render: { fillStyle: '#fbbf24' },
+        label: 'ballon',
+        isStatic: true,
+      });
+    
+      // 수평 빨간 플랫폼 (별 아래)
+      const redPlatform = Matter.Bodies.rectangle(120, 340, 250, 30, {
+        isStatic: true,
+        label: 'red_platform',
+        render: { fillStyle: '#ef4444' },
+      });
+    
+      // 오른쪽 초록 경사면
+      // const greenRamp = Matter.Bodies.rectangle(500, 350, 150, 10, {
+        // isStatic: true,
+        // label: 'green_ramp',
+        // render: { fillStyle: '#10b981' },
+        // angle: Math.PI / 6, // 경사각 30도
+      // });
+      const greenRamp = Matter.Bodies.trapezoid(520, 310, 220, 100, 2, {
+        isStatic: true,
+        label: 'green_ramp',
+        render: { fillStyle: '#10b981' },
+      });
+    
+      // 중앙 파란 장애물 (선택적 추가)
+      const centralUpObstacle = Matter.Bodies.rectangle(400, 170, 90, 350, {
+        isStatic: true,
+        label: 'central_obstacle',
+        render: { fillStyle: '#3b82f6' },
+      });
+
+      const centralDownObstacle = Matter.Bodies.rectangle(400, 550, 90, 100, {
+        isStatic: true,
+        label: 'central_obstacle',
+        render: { fillStyle: '#3b82f6' },
+      });
+    
+      // 모든 요소를 월드에 추가
+      Matter.World.add(world, [
+        ...walls,
+        ball,
+        star,
+        redPlatform,
+        greenRamp,
+        centralUpObstacle,
+        centralDownObstacle,
+      ]);
+    
+      // 공을 참조
+      ballRef.current = ball;
+    } else if (currentLevel === 6) {
+      const world = engineRef.current.world;
+
+      const walls = [
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
+        Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      ];
+
+      const ball = Matter.Bodies.circle(400, 100, 15, {
+        render: { fillStyle: '#ef4444' },
+        label: 'ball',
+        restitution: 0.3,
+        friction: 0.05,
+        frictionAir: 0.01,
+      });
+      initialBallPositionRef.current = { x: 400, y: 100 };
+
+      const star = Matter.Bodies.trapezoid(400, 400, 20, 20, 1, {
+        render: { fillStyle: '#fbbf24' },
+        label: 'balloon',
+        isStatic: true,
+      });
+
+      const horizontalPlatform = Matter.Bodies.rectangle(400, 150, 150, 20, {
+        isStatic: true,
+        label: 'horizontal_platform',
+        render: { fillStyle: '#6b7280' },
+      });
+
+      Matter.World.add(world, [
+        ...walls,
+        ball,
+        star,
+        horizontalPlatform,
+      ]);
+
+      ballRef.current = ball;
+    } else if (currentLevel === 7) {
+      const walls = [
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
+        Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      ];
+    
+      // Ball setup
+      const ball = Matter.Bodies.circle(150, 400, 15, {
+        render: { fillStyle: '#ef4444' },
+        label: 'ball',
+        restitution: 0.3,
+        friction: 0.05,
+        frictionAir: 0.01,
+      });
+      initialBallPositionRef.current = { x: 150, y: 400 };
+
+      const horizontalPlatform = Matter.Bodies.rectangle(150, 550, 150, 100, {
+        isStatic: true,
+        label: 'horizontal_platform',
+        render: { fillStyle: '#6b7280' },
+      });
+    
+      // Star (Goal) setup
+      const star = Matter.Bodies.trapezoid(600, 130, 20, 20, 1, {
+        render: { fillStyle: '#fbbf24' },
+        label: 'balloon',
+        isStatic: true,
+      });
+    
+      // Frame holding the star
+      const frameTop = Matter.Bodies.rectangle(600, 80, 100, 25, {
+        isStatic: true,
+        label: 'frame_top',
+        render: { fillStyle: '#94a3b8' },
+      });
+    
+      const frameLeft = Matter.Bodies.rectangle(550, 110, 25, 85, {
+        isStatic: true,
+        label: 'frame_left',
+        render: { fillStyle: '#94a3b8' },
+      });
+    
+      const frameRight = Matter.Bodies.rectangle(650, 110, 25, 85, {
+        isStatic: true,
+        label: 'frame_right',
+        render: { fillStyle: '#94a3b8' },
+      });
+    
+      // Adding everything to the world
+      Matter.World.add(world, [
+        ...walls,
+        ball,
+        horizontalPlatform,
+        star,
+        frameTop,
+        frameLeft,
+        frameRight,
+      ]);
+    
       ballRef.current = ball;
     }
 
