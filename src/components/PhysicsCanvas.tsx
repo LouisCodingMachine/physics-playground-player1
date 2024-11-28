@@ -10,7 +10,8 @@ const PhysicsCanvas: React.FC = () => {
   const engineRef = useRef(Matter.Engine.create({
     gravity: { x: 0, y: 1, scale: 0.001 },
   }));
-  const renderRef = useRef<Matter.Render>();
+  const renderRef = useRef<Matter.Render | null>();
+  const runnerRef = useRef<Matter.Runner | null>(null);
   const [tool, setTool] = useState<'pen' | 'eraser' | 'pin' | 'push'>('pen');
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawPoints, setDrawPoints] = useState<Matter.Vector[]>([]);
@@ -22,9 +23,16 @@ const PhysicsCanvas: React.FC = () => {
   const staticObjects = ['wall', 'ball', 'balloon'].concat(mapObjects);
   const ballRef = useRef<Matter.Body | null>(null);
 
-
   useEffect(() => {
     if (!canvasRef.current) return;
+
+    // 렌더링 객체 초기화
+    if (renderRef.current) {
+      Matter.Render.stop(renderRef.current); // 이전 렌더 중지
+      // renderRef.current.canvas.remove(); // 기존 캔버스 해제
+      renderRef.current = null;
+      console.log("렌더링 객체 초기화 완료")
+    }
 
     const render = Matter.Render.create({
       canvas: canvasRef.current,
@@ -38,14 +46,34 @@ const PhysicsCanvas: React.FC = () => {
         background: '#f8f4e3',
       },
     });
+    console.log("Render.create 완료")
     renderRef.current = render;
 
     engineRef.current.world.gravity.y = 0.1;
 
+    // 기존 러너가 있으면 중지
+    if (runnerRef.current) {
+      Matter.Runner.stop(runnerRef.current);
+      runnerRef.current = null;
+      console.log("기존 러너 중지 완료")
+    }
+
+    // 새로운 러너 생성 및 실행
+    const runner = Matter.Runner.create();
+    Matter.Runner.run(runner, engineRef.current);
+    runnerRef.current = runner;
+
+    Matter.Render.run(render);
+
+    // 월드 및 레벨 초기화
     const world = engineRef.current.world;
-    
-    // 월드 초기화
     Matter.World.clear(world, false);
+    // initializeLevel(currentLevel); // 레벨 초기화 함수 호출
+
+    // const world = engineRef.current.world;
+    
+    // // 월드 초기화
+    // Matter.World.clear(world, false);
 
     // 레벨에 따른 설정
     if (currentLevel === 1) {
@@ -504,14 +532,22 @@ const PhysicsCanvas: React.FC = () => {
       });
     });
 
-    Matter.Runner.run(engineRef.current);
-    Matter.Render.run(render);
-
+    // 정리 함수
     return () => {
-      Matter.Render.stop(render);
+      if (renderRef.current) Matter.Render.stop(renderRef.current);
+      if (runnerRef.current) Matter.Runner.stop(runnerRef.current);
       Matter.World.clear(world, false);
       Matter.Engine.clear(engineRef.current);
-    };
+    }
+
+    // Matter.Runner.run(engineRef.current);
+    // Matter.Render.run(render);
+
+    // return () => {
+    //   Matter.Render.stop(render);
+    //   Matter.World.clear(world, false);
+    //   Matter.Engine.clear(engineRef.current);
+    // };
   }, [currentLevel, resetTrigger]);
 
   
