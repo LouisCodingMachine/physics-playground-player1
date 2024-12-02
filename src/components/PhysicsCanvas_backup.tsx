@@ -4,197 +4,24 @@ import { Eraser, Pen, Pin, ChevronLeft, ChevronRight, RefreshCw, Hand, Circle } 
 
 const TOTAL_LEVELS = 7; // 총 스테이지 수를 정의합니다.
 
-interface PhysicsCanvasProps {
-  playerRole: 'player1' | 'player2';
-}
-
 // 맵이 변할 때 마다 실행됨.
-const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
+const PhysicsCanvas: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef(Matter.Engine.create({
     gravity: { x: 0, y: 1, scale: 0.001 },
   }));
-  const renderRef = useRef<Matter.Render | null>(null);
+  const renderRef = useRef<Matter.Render | null>();
   const runnerRef = useRef<Matter.Runner | null>(null);
-  const ballRef = useRef<Matter.Body | null>(null);
-  const initialBallPositionRef = useRef({ x: 0, y: 0 }); // 공 초기 위치 저장
-
   const [tool, setTool] = useState<'pen' | 'eraser' | 'pin' | 'push'>('pen');
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawPoints, setDrawPoints] = useState<Matter.Vector[]>([]);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [resetTrigger, setResetTrigger] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
-  
-  const [currentTurn, setCurrentTurn] = useState<'player1' | 'player2'>(playerRole); // 턴 관리
-  const [peerConnection, setPeerConnection] = useState<RTCPeerConnection | null>(null);
-  const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
-
+  const initialBallPositionRef = useRef({ x: 0, y: 0 }); // 공 초기 위치 저장
   const mapObjects = ['ground', 'tower1', 'tower2', 'tower3', 'tower4', 'tower5'];
   const staticObjects = ['wall', 'ball', 'balloon'].concat(mapObjects);
-  
-
-  
-
-  useEffect(() => {
-    // WebRTC 설정
-    const pc = new RTCPeerConnection();
-    const dc = pc.createDataChannel('game');
-    setPeerConnection(pc);
-    setDataChannel(dc);
-
-    pc.ondatachannel = (event) => {
-      const receiveChannel = event.channel;
-      receiveChannel.onmessage = (message) => handleIncomingData(JSON.parse(message.data));
-    };
-
-    dc.onopen = () => console.log('Data channel open');
-    dc.onclose = () => console.log('Data channel closed');
-
-    return () => {
-      pc.close();
-      setPeerConnection(null);
-      setDataChannel(null);
-    };
-  }, []);
-
-  const sendData = (data: object) => {
-    if (dataChannel?.readyState === 'open') {
-      dataChannel.send(JSON.stringify(data));
-    }
-  };
-
-  const handleIncomingData = (data: any) => {
-    if (data.type === 'create_body') {
-      const body = createPhysicsBody(data.points);
-      if (body) Matter.World.add(engineRef.current.world, body);
-    } else if (data.type === 'remove_body') {
-      const bodies = Matter.Composite.allBodies(engineRef.current.world);
-      const targetBody = bodies.find((b) => b.id === data.bodyId);
-      if (targetBody) Matter.World.remove(engineRef.current.world, targetBody);
-    } else if (data.type === 'turn_end') {
-      setCurrentTurn(data.nextTurn);
-    } else if (data.type === 'push') {
-      applyForceToBall(data.force);
-    }
-  };
-
-  const createPhysicsBody = (points: Matter.Vector[]) => {
-    if (points.length < 2) return null;
-    console.log("object generated");
-  
-    // Simplify the path to reduce physics complexity
-    const simplified = points.filter((point, index) => {
-      if (index === 0 || index === points.length - 1) return true;
-      const prev = points[index - 1];
-      const dist = Math.hypot(point.x - prev.x, point.y - prev.y);
-      return dist > 2;
-    });
-  
-    // Check if points are in a nearly straight line by comparing distances
-    if (simplified.length === 2) {
-      const [start, end] = simplified;
-      const distance = Math.hypot(end.x - start.x, end.y - start.y);
-      const angle = Math.atan2(end.y - start.y, end.x - start.x);
-  
-      // Create a thin rectangle to represent the line
-      return Matter.Bodies.rectangle(
-        (start.x + end.x) / 2, // Center X
-        (start.y + end.y) / 2, // Center Y
-        distance, // Width of the line (distance between points)
-        2, // Very small height to simulate a line
-        {
-          angle,
-          render: {
-            fillStyle: '#3b82f6',
-            strokeStyle: '#1d4ed8',
-            lineWidth: 1,
-          },
-          isStatic: false, // 사물이 떨어지도록 설정
-          friction: 0.8,
-          frictionStatic: 1,
-          restitution: 0.2,
-          density: 0.01,
-        }
-      );
-    }
-  
-    // For shapes with more points, create a closed polygonal body
-    const vertices = [...simplified];
-    if (vertices.length >= 3) {
-      const bodyOptions = {
-        render: {
-          fillStyle: '#3b82f6',
-          strokeStyle: '#1d4ed8',
-          lineWidth: 1,
-        },
-        isStatic: false, // 사물이 떨어지도록 설정
-        friction: 0.8,
-        frictionStatic: 1,
-        restitution: 0.2,
-        density: 0.005, // 밀도를 낮추어 떨어지는 속도를 줄임
-        frictionAir: 0.02, // 공중 저항을 높임
-      };
-  
-      // Use the center of mass as the initial position
-      const centroidX = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
-      const centroidY = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
-  
-      const translatedVertices = vertices.map(v => ({
-        x: v.x - centroidX,
-        y: v.y - centroidY,
-      }));
-  
-      const body = Matter.Bodies.fromVertices(centroidX, centroidY, [translatedVertices], bodyOptions);
-      return body;
-    }
-  
-    return null;
-  };
-
-  const applyForceToBall = (force: { x: number; y: number }) => {
-    if (ballRef.current) {
-      Matter.Body.applyForce(ballRef.current, ballRef.current.position, force);
-    }
-  };
-
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (currentTurn !== 'player1') return; // 상대방 턴일 때는 동작하지 않음
-    if (!canvasRef.current) return;
-    
-    const rect = canvasRef.current.getBoundingClientRect();
-    // console.log("rect.left: ", rect.left)
-    // console.log("rect.right: ", rect.right)
-    // console.log("rect.top: ", rect.top)
-    // console.log("rect.bottom: ", rect.bottom)
-    const point = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    };
-
-    if (tool === 'eraser') {
-      const bodies = Matter.Composite.allBodies(engineRef.current.world);
-      const mousePosition = { x: point.x, y: point.y };
-      
-      for (let body of bodies) {
-        if (Matter.Bounds.contains(body.bounds, mousePosition) &&
-            !staticObjects.includes(body.label)) {
-          Matter.World.remove(engineRef.current.world, body);
-          break;
-        }
-      }
-      return;
-    }
-
-    if (tool === 'push' && ballRef.current) {
-      const force = { x: point.x > ballRef.current.position.x ? 0.008 : -0.008, y: 0 };
-      applyForceToBall(force);
-      sendData({ type: 'push', force });
-    }
-
-    setIsDrawing(true);
-    setDrawPoints([point]);
-  };
+  const ballRef = useRef<Matter.Body | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -723,6 +550,129 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
     // };
   }, [currentLevel, resetTrigger]);
 
+  
+
+  const createPhysicsBody = (points: Matter.Vector[]) => {
+    if (points.length < 2) return null;
+    console.log("object generated");
+  
+    // Simplify the path to reduce physics complexity
+    const simplified = points.filter((point, index) => {
+      if (index === 0 || index === points.length - 1) return true;
+      const prev = points[index - 1];
+      const dist = Math.hypot(point.x - prev.x, point.y - prev.y);
+      return dist > 2;
+    });
+  
+    // Check if points are in a nearly straight line by comparing distances
+    if (simplified.length === 2) {
+      const [start, end] = simplified;
+      const distance = Math.hypot(end.x - start.x, end.y - start.y);
+      const angle = Math.atan2(end.y - start.y, end.x - start.x);
+  
+      // Create a thin rectangle to represent the line
+      return Matter.Bodies.rectangle(
+        (start.x + end.x) / 2, // Center X
+        (start.y + end.y) / 2, // Center Y
+        distance, // Width of the line (distance between points)
+        2, // Very small height to simulate a line
+        {
+          angle,
+          render: {
+            fillStyle: '#3b82f6',
+            strokeStyle: '#1d4ed8',
+            lineWidth: 1,
+          },
+          isStatic: false, // 사물이 떨어지도록 설정
+          friction: 0.8,
+          frictionStatic: 1,
+          restitution: 0.2,
+          density: 0.01,
+        }
+      );
+    }
+  
+    // For shapes with more points, create a closed polygonal body
+    const vertices = [...simplified];
+    if (vertices.length >= 3) {
+      const bodyOptions = {
+        render: {
+          fillStyle: '#3b82f6',
+          strokeStyle: '#1d4ed8',
+          lineWidth: 1,
+        },
+        isStatic: false, // 사물이 떨어지도록 설정
+        friction: 0.8,
+        frictionStatic: 1,
+        restitution: 0.2,
+        density: 0.005, // 밀도를 낮추어 떨어지는 속도를 줄임
+        frictionAir: 0.02, // 공중 저항을 높임
+      };
+  
+      // Use the center of mass as the initial position
+      const centroidX = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
+      const centroidY = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
+  
+      const translatedVertices = vertices.map(v => ({
+        x: v.x - centroidX,
+        y: v.y - centroidY,
+      }));
+  
+      const body = Matter.Bodies.fromVertices(centroidX, centroidY, [translatedVertices], bodyOptions);
+      return body;
+    }
+  
+    return null;
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return;
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    // console.log("rect.left: ", rect.left)
+    // console.log("rect.right: ", rect.right)
+    // console.log("rect.top: ", rect.top)
+    // console.log("rect.bottom: ", rect.bottom)
+    const point = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+
+    if (tool === 'eraser') {
+      const bodies = Matter.Composite.allBodies(engineRef.current.world);
+      const mousePosition = { x: point.x, y: point.y };
+      
+      for (let body of bodies) {
+        if (Matter.Bounds.contains(body.bounds, mousePosition) &&
+            !staticObjects.includes(body.label)) {
+          Matter.World.remove(engineRef.current.world, body);
+          break;
+        }
+      }
+      return;
+    }
+
+    if (tool === 'push' && ballRef.current) { 
+      const ball = ballRef.current;
+      const ballX = ball.position.x;
+
+      // 공의 중심에서 클릭한 위치까지의 거리 계산
+      const clickOffsetX = point.x - ballX;
+
+      // 클릭한 위치가 공의 왼쪽인지 오른쪽인지 판단
+      if (clickOffsetX < 0) {
+        // 왼쪽을 클릭하면 오른쪽으로 힘을 가함
+        Matter.Body.applyForce(ball, ball.position, { x: 0.008, y: 0 });
+      } else {
+        // 오른쪽을 클릭하면 왼쪽으로 힘을 가함
+        Matter.Body.applyForce(ball, ball.position, { x: -0.008, y: 0 });
+      }
+    }
+
+    setIsDrawing(true);
+    setDrawPoints([point]);
+  };
+
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isDrawing || !canvasRef.current || tool === 'eraser') return;
   
@@ -731,7 +681,6 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     };
-    setDrawPoints((prev) => [...prev, point]);
     // console.log("point.y: ", point.y)
     // console.log("rect.left: ", rect.left)
     // console.log("rect.right: ", rect.right)
@@ -790,27 +739,21 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
   };
   
   const handleMouseUp = () => {
-    if (!isDrawing || drawPoints.length < 2 || tool !== 'pen') {
+    if (tool === 'eraser' || drawPoints.length < 2) {
       setIsDrawing(false);
       setDrawPoints([]);
       return;
     }
   
-    const body = createPhysicsBody(drawPoints);
-    if (body) {
-      Matter.World.add(engineRef.current.world, body);
-      sendData({ type: 'create_body', points: drawPoints });
+    if (tool === 'pen') {
+      const body = createPhysicsBody(drawPoints);
+      if (body) {
+        Matter.World.add(engineRef.current.world, body);
+      }
     }
   
     setIsDrawing(false);
     setDrawPoints([]);
-    endTurn();
-  };
-
-  const endTurn = () => {
-    const nextTurn = currentTurn === 'player1' ? 'player2' : 'player1';
-    setCurrentTurn(nextTurn);
-    sendData({ type: 'turn_end', nextTurn });
   };
 
   const handleToolChange = (newTool: 'pen' | 'eraser' | 'pin' | 'push') => {
@@ -870,7 +813,6 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex gap-4 mb-4">
-        <span className="p-2 text-xl">{currentTurn === 'player1' ? "Your Turn" : "Opponent's Turn"}</span>
         <button
           onClick={() => resetLevel()}
           className={`p-2 rounded 'bg-gray-200'`}
