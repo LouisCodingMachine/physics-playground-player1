@@ -1,200 +1,216 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Matter from 'matter-js';
 import { Eraser, Pen, Pin, ChevronLeft, ChevronRight, RefreshCw, Hand, Circle } from 'lucide-react';
+import axios from 'axios';
+import { useSocket } from '../context/SocketContext';
+// const socket = io('https://13.239.234.81.nip.io'); // 서버 URL에 맞게 수정
+// const socket = io('http://localhost:3000'); // 서버 URL에 맞게 수정
 
-const TOTAL_LEVELS = 7; // 총 스테이지 수를 정의합니다.
-
-interface PhysicsCanvasProps {
-  playerRole: 'player1' | 'player2';
+interface LogInfo {
+  player_number: number,
+  type: 'draw' | 'erase' | 'push' | 'refresh' | 'move_prev_level' | 'move_next_level',
+  timestamp: Date,
 }
 
+const TOTAL_LEVELS = 9; // 총 스테이지 수를 정의합니다.
+
 // 맵이 변할 때 마다 실행됨.
-const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
+const PhysicsCanvas: React.FC = () => {
+  const socket = useSocket();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engineRef = useRef(Matter.Engine.create({
     gravity: { x: 0, y: 1, scale: 0.001 },
   }));
-  const renderRef = useRef<Matter.Render | null>(null);
+  const renderRef = useRef<Matter.Render | null>();
   const runnerRef = useRef<Matter.Runner | null>(null);
-  const ballRef = useRef<Matter.Body | null>(null);
-  const initialBallPositionRef = useRef({ x: 0, y: 0 }); // 공 초기 위치 저장
-
   const [tool, setTool] = useState<'pen' | 'eraser' | 'pin' | 'push'>('pen');
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawPoints, setDrawPoints] = useState<Matter.Vector[]>([]);
   const [currentLevel, setCurrentLevel] = useState(1);
   const [resetTrigger, setResetTrigger] = useState(false);
   const [gameEnded, setGameEnded] = useState(false);
+  const [currentTurn, setCurrentTurn] = useState<'player1' | 'player2'>('player1');
+  const [pushLock, setPushLock] = useState(false);
+  const [drawLock, setDrawLock] = useState(false);
+  const [cursors, setCursors] = useState<{ playerId: string; x: number; y: number }[]>([]);
   
-  const [currentTurn, setCurrentTurn] = useState<'player1' | 'player2'>(playerRole); // 턴 관리
-  const [peerConnection, setPeerConnection] = useState<RTCPeerConnection | null>(null);
-  const [dataChannel, setDataChannel] = useState<RTCDataChannel | null>(null);
-
-  const mapObjects = ['ground', 'tower1', 'tower2', 'tower3', 'tower4', 'tower5'];
+  const initialBallPositionRef = useRef({ x: 0, y: 0 }); // 공 초기 위치 저장
+  const mapObjects = ['ground', 'tower1', 'tower2', 'tower3', 'tower4', 'tower5', 'base', 'pedestal', 'top_bar', 'vertical_bar', 'red_box', 'left_up_green_platform', 'left_down_green_platform', 'right_up_green_platform', 'right_down_green_platform', 'left_red_wall', 'right_red_wall', 'bottom_red_wall', 'red_platform', 'green_ramp', 'central_obstacle', 'wall_bottom', 'wall_top', 'wall_left', 'wall_right', 'horizontal_platform', 'frame_top', 'frame_left', 'frame_right', 'horizontal_down_platform', 'pillar1', 'pillar2', 'pillar3', 'rounded_slope', 'horizontal_down_platform', 'horizontal_up_platform'];
   const staticObjects = ['wall', 'ball', 'balloon'].concat(mapObjects);
-  
+  const ballRef = useRef<Matter.Body | null>(null);
+  const cursorCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  
+  // useEffect(() => {
+  //   // 서버에서 mouseMove 이벤트 수신
+  //   socket.on('mouseMove', (data: any) => {
+  //     const { x, y, playerId } = data;
+  //     console.log("수신 받음.")
+  //     console.log(`Mouse Move from ${data.id}:`, data);
+  //     drawOtherPlayerCursor(x, y, playerId); // 다른 플레이어의 커서를 그립니다.
+  //   });
 
+  //   return () => {
+  //     socket.off('mouseMove');
+  //   };
+  // }, [socket]);
+
+  // Socket 이벤트 처리
   useEffect(() => {
-    // WebRTC 설정
-    const pc = new RTCPeerConnection();
-    const dc = pc.createDataChannel('game');
-    setPeerConnection(pc);
-    setDataChannel(dc);
-
-    pc.ondatachannel = (event) => {
-      const receiveChannel = event.channel;
-      receiveChannel.onmessage = (message) => handleIncomingData(JSON.parse(message.data));
-    };
-
-    dc.onopen = () => console.log('Data channel open');
-    dc.onclose = () => console.log('Data channel closed');
+    socket.on('mouseMove', (data: { x: number; y: number; playerId: string }) => {
+      if(data.playerId !== 'player2') return;
+      // setCursors((prevCursors) => {
+      //   // 이전 상태에서 같은 playerId를 가진 항목 제거
+      //   const updatedCursors = prevCursors.filter((cursor) => cursor.playerId !== data.playerId);
+  
+      //   // 새 데이터로 대체
+      //   return [...updatedCursors, data];
+      // });
+      setCursors((prevCursors) => {
+        const existingCursor = prevCursors.find((cursor) => cursor.playerId === data.playerId);
+  
+        // 위치가 동일하다면 업데이트하지 않음
+        if (existingCursor && existingCursor.x === data.x && existingCursor.y === data.y) {
+          return prevCursors;
+        }
+  
+        // 기존 데이터를 업데이트
+        const updatedCursors = prevCursors.filter((cursor) => cursor.playerId !== data.playerId);
+  
+        return [...updatedCursors, data];
+      });
+    });
 
     return () => {
-      pc.close();
-      setPeerConnection(null);
-      setDataChannel(null);
+      socket.off('mouseMove');
     };
   }, []);
 
-  const sendData = (data: object) => {
-    if (dataChannel?.readyState === 'open') {
-      dataChannel.send(JSON.stringify(data));
-    }
-  };
-
-  const handleIncomingData = (data: any) => {
-    if (data.type === 'create_body') {
-      const body = createPhysicsBody(data.points);
-      if (body) Matter.World.add(engineRef.current.world, body);
-    } else if (data.type === 'remove_body') {
-      const bodies = Matter.Composite.allBodies(engineRef.current.world);
-      const targetBody = bodies.find((b) => b.id === data.bodyId);
-      if (targetBody) Matter.World.remove(engineRef.current.world, targetBody);
-    } else if (data.type === 'turn_end') {
-      setCurrentTurn(data.nextTurn);
-    } else if (data.type === 'push') {
-      applyForceToBall(data.force);
-    }
-  };
-
-  const createPhysicsBody = (points: Matter.Vector[]) => {
-    if (points.length < 2) return null;
-    console.log("object generated");
+  useEffect(() => {
+    socket.on('drawShape', (data: { points: Matter.Vector[]; playerId: string; customId: string }) => {
+      console.log("playerId: ", data.playerId);
+      if(data.playerId !== 'player2') return;
+      // 도형을 생성하며 customId를 설정
+      const body = createPhysicsBody(data.points, false, data.customId);
   
-    // Simplify the path to reduce physics complexity
-    const simplified = points.filter((point, index) => {
-      if (index === 0 || index === points.length - 1) return true;
-      const prev = points[index - 1];
-      const dist = Math.hypot(point.x - prev.x, point.y - prev.y);
-      return dist > 2;
+      if (body) {
+        // Matter.js 월드에 도형 추가
+        Matter.World.add(engineRef.current.world, body);
+      }
     });
   
-    // Check if points are in a nearly straight line by comparing distances
-    if (simplified.length === 2) {
-      const [start, end] = simplified;
-      const distance = Math.hypot(end.x - start.x, end.y - start.y);
-      const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    return () => {
+      socket.off('drawShape');
+    };
+  }, []);
+
+  useEffect(() => {
+    socket.on('resetLevel', (data: { level: number }) => {
+      console.log(`Resetting level to: ${data.level}`);
+      
+      // 월드와 렌더를 정지하고 지운 후, 다시 설정
+      const world = engineRef.current.world;
+      Matter.World.clear(world, false);
+      Matter.Engine.clear(engineRef.current);
   
-      // Create a thin rectangle to represent the line
-      return Matter.Bodies.rectangle(
-        (start.x + end.x) / 2, // Center X
-        (start.y + end.y) / 2, // Center Y
-        distance, // Width of the line (distance between points)
-        2, // Very small height to simulate a line
-        {
-          angle,
-          render: {
-            fillStyle: '#3b82f6',
-            strokeStyle: '#1d4ed8',
-            lineWidth: 1,
-          },
-          isStatic: false, // 사물이 떨어지도록 설정
-          friction: 0.8,
-          frictionStatic: 1,
-          restitution: 0.2,
-          density: 0.01,
-        }
+      if (renderRef.current) {
+        Matter.Render.stop(renderRef.current);
+        Matter.Render.run(renderRef.current);
+      }
+  
+      // 수신한 레벨로 초기화
+      setCurrentLevel(data.level);
+      setResetTrigger((prev) => !prev);
+    });
+  
+    return () => {
+      socket.off('resetLevel');
+    };
+  }, []);
+
+  useEffect(() => {
+    socket.on('erase', (data: { customId: string; playerId: string }) => {
+      const body = Matter.Composite.allBodies(engineRef.current.world).find(
+        (b) => b.label === data.customId
       );
-    }
+      if (body) {
+        Matter.World.remove(engineRef.current.world, body);
+      }
+    });
   
-    // For shapes with more points, create a closed polygonal body
-    const vertices = [...simplified];
-    if (vertices.length >= 3) {
-      const bodyOptions = {
-        render: {
-          fillStyle: '#3b82f6',
-          strokeStyle: '#1d4ed8',
-          lineWidth: 1,
-        },
-        isStatic: false, // 사물이 떨어지도록 설정
-        friction: 0.8,
-        frictionStatic: 1,
-        restitution: 0.2,
-        density: 0.005, // 밀도를 낮추어 떨어지는 속도를 줄임
-        frictionAir: 0.02, // 공중 저항을 높임
-      };
-  
-      // Use the center of mass as the initial position
-      const centroidX = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
-      const centroidY = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
-  
-      const translatedVertices = vertices.map(v => ({
-        x: v.x - centroidX,
-        y: v.y - centroidY,
-      }));
-  
-      const body = Matter.Bodies.fromVertices(centroidX, centroidY, [translatedVertices], bodyOptions);
-      return body;
-    }
-  
-    return null;
-  };
+    return () => {
+      socket.off('erase');
+    };
+  }, []);
 
-  const applyForceToBall = (force: { x: number; y: number }) => {
-    if (ballRef.current) {
-      Matter.Body.applyForce(ballRef.current, ballRef.current.position, force);
-    }
-  };
+  useEffect(() => {
+    socket.on('push', (data: { force: { x: number; y: number }; playerId: string }) => {
+      if (ballRef.current) {
+        const ball = ballRef.current;
+        Matter.Body.applyForce(ball, ball.position, data.force);
+      }
+    });
+  
+    return () => {
+      socket.off('push');
+    };
+  }, []);
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (currentTurn !== 'player1') return; // 상대방 턴일 때는 동작하지 않음
-    if (!canvasRef.current) return;
-    
-    const rect = canvasRef.current.getBoundingClientRect();
-    // console.log("rect.left: ", rect.left)
-    // console.log("rect.right: ", rect.right)
-    // console.log("rect.top: ", rect.top)
-    // console.log("rect.bottom: ", rect.bottom)
-    const point = {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
+  useEffect(() => {
+    socket.on('changeTool', (data: { tool: 'pen' | 'eraser' | 'pin' | 'push'; playerId: string }) => {
+      console.log(`Tool changed to: ${data.tool} by player: ${data.playerId}`);
+      setTool(data.tool);
+    });
+  
+    return () => {
+      socket.off('changeTool');
+    };
+  }, []);
+
+  useEffect(() => {
+    socket.on('changeLevel', (data: { level: number; direction: string; playerId: string }) => {
+      console.log(`Level changed to: ${data.level} by player: ${data.playerId}`);
+      setCurrentLevel(data.level); // 레벨 업데이트
+      setGameEnded(false); // 게임 종료 상태 초기화
+    });
+  
+    return () => {
+      socket.off('changeLevel');
+    };
+  }, []);
+
+  // 상대방 커서 움직임을 캔버스에 그리기
+  useEffect(() => {
+    const canvas = cursorCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const draw = () => {
+      // 캔버스를 초기화
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // 모든 커서를 다시 그림
+      cursors.forEach(({ x, y, playerId }) => {
+        console.log("cursors[0].playerId: ", cursors[0].playerId);
+        ctx.beginPath();
+        ctx.arc(x, y, 5, 0, Math.PI * 2); // 커서 그리기
+        ctx.fillStyle = playerId === 'player1' ? 'blue' : 'red'; // 플레이어별 색상
+        ctx.fill();
+      });
+
+      requestAnimationFrame(draw); // 애니메이션 프레임 요청
     };
 
-    if (tool === 'eraser') {
-      const bodies = Matter.Composite.allBodies(engineRef.current.world);
-      const mousePosition = { x: point.x, y: point.y };
-      
-      for (let body of bodies) {
-        if (Matter.Bounds.contains(body.bounds, mousePosition) &&
-            !staticObjects.includes(body.label)) {
-          Matter.World.remove(engineRef.current.world, body);
-          break;
-        }
-      }
-      return;
-    }
+    draw();
 
-    if (tool === 'push' && ballRef.current) {
-      const force = { x: point.x > ballRef.current.position.x ? 0.008 : -0.008, y: 0 };
-      applyForceToBall(force);
-      sendData({ type: 'push', force });
-    }
+    return () => {
+      cancelAnimationFrame(draw);
+    };
+  }, [cursors]); // cursors가 변경될 때마다 다시 그림
 
-    setIsDrawing(true);
-    setDrawPoints([point]);
-  };
+  useEffect(() => {
+    setTimeout(() => setPushLock(false), 5000);
+  }, [pushLock]);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -232,7 +248,10 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
     }
 
     // 새로운 러너 생성 및 실행
-    const runner = Matter.Runner.create();
+    const runner = Matter.Runner.create({
+      delta: 25,
+      isFixed: true, // 고정된 시간 간격 유지
+    });
     Matter.Runner.run(runner, engineRef.current);
     runnerRef.current = runner;
 
@@ -275,7 +294,7 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
         render: { fillStyle: '#ef4444' },
         label: 'ball',
         restitution: 0.3, // 반발 계수: 공이 튀어오르는 정도
-        friction: 0.05, // 마찰력
+        friction: 0.01, // 마찰력
         frictionAir: 0.01 // 공중에서의 저항
       });
       ballRef.current = ball;  // ballRef에 공을 할당하여 참조하도록 합니다
@@ -298,37 +317,77 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
       // Matter.World.add(world, [ground, tower1, tower2, tower3, tower4, tower5, ...walls, ball, star]);
       Matter.World.add(world, [tower1, tower2, tower3, tower4, tower5, ...walls, ball, star]);
     } else if (currentLevel === 2) {
-      // 레벨 2 설정 - 두 번째 사진 기반
+      const world = engineRef.current.world;
+
       const walls = [
         Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
         Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
         Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
         Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
       ];
-  
-      // 공 (ball)과 별 (balloon) 위치 설정
-      const ball = Matter.Bodies.circle(400, 400, 15, {
+
+      const ball = Matter.Bodies.circle(200, 500, 15, {
         render: { fillStyle: '#ef4444' },
         label: 'ball',
         restitution: 0.3,
-        friction: 0.05,
+        friction: 0.01,
         frictionAir: 0.01,
       });
-      initialBallPositionRef.current = { x: 400, y: 400 }
+      initialBallPositionRef.current = { x: 200, y: 500 };
 
-      const star = Matter.Bodies.trapezoid(600, 550, 20, 20, 1, {
+      const horizontalPlatform = Matter.Bodies.rectangle(400, 550, 700, 200, {
+        isStatic: true,
+        label: 'horizontal_platform',
+        render: { fillStyle: '#6b7280' },
+      });
+
+      const star = Matter.Bodies.trapezoid(650, 430, 20, 20, 1, {
         render: { fillStyle: '#fbbf24' },
         label: 'balloon',
         isStatic: true,
       });
-  
-      // 맵 내 정적 객체 생성
-      const base = Matter.Bodies.rectangle(400, 580, 100, 20, { isStatic: true, label: 'base' });
-      const pedestal = Matter.Bodies.rectangle(400, 500, 50, 100, { isStatic: true, label: 'pedestal' });
-  
-      Matter.World.add(world, [ball, star, base, pedestal, ...walls]);
+
+      Matter.World.add(world, [
+        ...walls,
+        ball,
+        star,
+        horizontalPlatform,
+      ]);
+
       ballRef.current = ball;
-    } else if (currentLevel === 3) {
+    }
+    // } else if (currentLevel === 3) {
+      // const walls = [
+      //   Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
+      //   Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
+      //   Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      //   Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      // ];
+  
+      // // 공 (ball)과 별 (balloon) 위치 설정
+      // const ball = Matter.Bodies.circle(400, 400, 15, {
+      //   render: { fillStyle: '#ef4444' },
+      //   label: 'ball',
+      //   restitution: 0.3,
+      //   friction: 0.05,
+      //   frictionAir: 0.01,
+      // });
+      // initialBallPositionRef.current = { x: 400, y: 400 }
+
+      // const star = Matter.Bodies.trapezoid(600, 550, 20, 20, 1, {
+      //   render: { fillStyle: '#fbbf24' },
+      //   label: 'balloon',
+      //   isStatic: true,
+      // });
+  
+      // // 맵 내 정적 객체 생성
+      // const base = Matter.Bodies.rectangle(400, 580, 100, 20, { isStatic: true, label: 'base' });
+      // const pedestal = Matter.Bodies.rectangle(400, 500, 50, 100, { isStatic: true, label: 'pedestal' });
+  
+      // Matter.World.add(world, [ball, star, base, pedestal, ...walls]);
+      // ballRef.current = ball;
+    // } else if (currentLevel === 4) {
+    else if (currentLevel === 3) {
       const walls = [
         Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
         Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
@@ -336,14 +395,14 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
         Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
       ];
     
-      const ball = Matter.Bodies.circle(400, 100, 15, {
+      const ball = Matter.Bodies.circle(400, 180, 15, {
         render: { fillStyle: '#ef4444' },
         label: 'ball',
         restitution: 0.3,
         friction: 0.05,
         frictionAir: 0.01,
       });
-      initialBallPositionRef.current = { x: 400, y: 100 };
+      initialBallPositionRef.current = { x: 400, y: 180 };
     
       const star = Matter.Bodies.trapezoid(400, 350, 20, 20, 1, {
         render: { fillStyle: '#fbbf24' },
@@ -383,13 +442,13 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
     
       const rightUpGreenPlatform = Matter.Bodies.rectangle(550, 300, 60, 10, {
         isStatic: true,
-        label: 'right_green_platform',
+        label: 'right_up_green_platform',
         render: { fillStyle: '#10b981' },
       });
 
       const rightDownGreenPlatform = Matter.Bodies.rectangle(500, 500, 60, 10, {
         isStatic: true,
-        label: 'right_green_platform',
+        label: 'right_down_green_platform',
         render: { fillStyle: '#10b981' },
       });
     
@@ -407,6 +466,45 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
       ]);
       ballRef.current = ball;
     } else if (currentLevel === 4) {
+      const world = engineRef.current.world;
+
+      const walls = [
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
+        Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      ];
+
+      const ball = Matter.Bodies.circle(150, 400, 15, {
+        render: { fillStyle: '#ef4444' },
+        label: 'ball',
+        restitution: 0.3,
+        friction: 0.05,
+        frictionAir: 0.01,
+      });
+      initialBallPositionRef.current = { x: 150, y: 400 };
+
+      const horizontalPlatform = Matter.Bodies.rectangle(150, 450, 200, 150, {
+        isStatic: true,
+        label: 'horizontal_down_platform',
+        render: { fillStyle: '#6b7280' },
+      });
+
+      const star = Matter.Bodies.trapezoid(700, 350, 20, 20, 1, {
+        render: { fillStyle: '#fbbf24' },
+        label: 'balloon',
+        isStatic: true,
+      });
+
+      Matter.World.add(world, [
+        ...walls,
+        ball,
+        star,
+        horizontalPlatform,
+      ]);
+
+      ballRef.current = ball;
+    } else if (currentLevel === 5) {
       const walls = [
         Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
         Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall_top' }),
@@ -457,7 +555,46 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
         bottomHorizontalWall,
       ]);
       ballRef.current = ball;
-    } else if (currentLevel === 5) {
+
+      // const world = engineRef.current.world;
+
+      // const walls = [
+      //   Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
+      //   Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
+      //   Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      //   Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      // ];
+
+      // const ball = Matter.Bodies.circle(400, 100, 15, {
+      //   render: { fillStyle: '#ef4444' },
+      //   label: 'ball',
+      //   restitution: 0.3,
+      //   friction: 0.05,
+      //   frictionAir: 0.01,
+      // });
+      // initialBallPositionRef.current = { x: 400, y: 100 };
+
+      // const star = Matter.Bodies.trapezoid(400, 400, 20, 20, 1, {
+      //   render: { fillStyle: '#fbbf24' },
+      //   label: 'balloon',
+      //   isStatic: true,
+      // });
+
+      // const horizontalPlatform = Matter.Bodies.rectangle(400, 150, 150, 20, {
+      //   isStatic: true,
+      //   label: 'horizontal_platform',
+      //   render: { fillStyle: '#6b7280' },
+      // });
+
+      // Matter.World.add(world, [
+      //   ...walls,
+      //   ball,
+      //   star,
+      //   horizontalPlatform,
+      // ]);
+
+      // ballRef.current = ball;
+    } else if (currentLevel === 6) {
       const walls = [
         Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }), // 바닥
         Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall_top' }), // 상단
@@ -476,9 +613,9 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
       initialBallPositionRef.current = { x: 500, y: 250 };
     
       // 별 설정 (왼쪽 위 플랫폼 위)
-      const star = Matter.Bodies.polygon(150, 310, 5, 15, {
+      const star = Matter.Bodies.trapezoid(150, 310, 20, 20, 1, {
         render: { fillStyle: '#fbbf24' },
-        label: 'ballon',
+        label: 'balloon',
         isStatic: true,
       });
     
@@ -528,7 +665,7 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
     
       // 공을 참조
       ballRef.current = ball;
-    } else if (currentLevel === 6) {
+    } else if (currentLevel === 7) {
       const world = engineRef.current.world;
 
       const walls = [
@@ -538,44 +675,6 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
         Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
       ];
 
-      const ball = Matter.Bodies.circle(400, 100, 15, {
-        render: { fillStyle: '#ef4444' },
-        label: 'ball',
-        restitution: 0.3,
-        friction: 0.05,
-        frictionAir: 0.01,
-      });
-      initialBallPositionRef.current = { x: 400, y: 100 };
-
-      const star = Matter.Bodies.trapezoid(400, 400, 20, 20, 1, {
-        render: { fillStyle: '#fbbf24' },
-        label: 'balloon',
-        isStatic: true,
-      });
-
-      const horizontalPlatform = Matter.Bodies.rectangle(400, 150, 150, 20, {
-        isStatic: true,
-        label: 'horizontal_platform',
-        render: { fillStyle: '#6b7280' },
-      });
-
-      Matter.World.add(world, [
-        ...walls,
-        ball,
-        star,
-        horizontalPlatform,
-      ]);
-
-      ballRef.current = ball;
-    } else if (currentLevel === 7) {
-      const walls = [
-        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
-        Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
-        Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
-        Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
-      ];
-    
-      // Ball setup
       const ball = Matter.Bodies.circle(150, 400, 15, {
         render: { fillStyle: '#ef4444' },
         label: 'ball',
@@ -584,6 +683,134 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
         frictionAir: 0.01,
       });
       initialBallPositionRef.current = { x: 150, y: 400 };
+
+      const horizontalDownPlatform = Matter.Bodies.rectangle(300, 450, 450, 150, {
+        isStatic: true,
+        label: 'horizontal_down_platform',
+        render: { fillStyle: '#6b7280' },
+      });
+
+      const horizontalUpPlatform = Matter.Bodies.rectangle(550, 200, 400, 20, {
+        isStatic: true,
+        label: 'horizontal_up_platform',
+        render: { fillStyle: '#6b7280' },
+      });
+
+      const star = Matter.Bodies.trapezoid(700, 180, 20, 20, 1, {
+        render: { fillStyle: '#fbbf24' },
+        label: 'balloon',
+        isStatic: true,
+      });
+
+      Matter.World.add(world, [
+        ...walls,
+        ball,
+        star,
+        horizontalDownPlatform,
+        horizontalUpPlatform,
+      ]);
+
+      ballRef.current = ball;
+    } else if (currentLevel === 8) {
+      const world = engineRef.current.world;
+
+      const walls = [
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
+        Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      ];
+
+      const ball = Matter.Bodies.circle(80, 200, 15, {
+        render: { fillStyle: '#ef4444' },
+        label: 'ball',
+        restitution: 0.3,
+        friction: 0.01,
+        frictionAir: 0.01,
+      });
+      initialBallPositionRef.current = { x: 80, y: 200 };
+
+      const pillar1 = Matter.Bodies.rectangle(750, 500, 80, 200, {
+        isStatic: true,
+        label: 'pillar1',
+        render: { fillStyle: '#6b7280' },
+      });
+
+      const pillar2 = Matter.Bodies.rectangle(670, 550, 80, 170, {
+        isStatic: true,
+        label: 'pillar2',
+        render: { fillStyle: '#6b7280' },
+      });
+
+      const pillar3 = Matter.Bodies.rectangle(490, 550, 100, 170, {
+        isStatic: true,
+        label: 'pillar3',
+        render: { fillStyle: '#6b7280' },
+      });
+
+      const slopeVertices = [];
+      const radius = 450;
+      const centerX = 30;
+      const centerY = 410;
+      const segmentCount = 30; // 둥근 정도를 조절하는 세그먼트 수
+
+      // 정점 생성 (거꾸로 뒤집기 위해 Y 좌표 반전)
+      for (let i = 0; i <= segmentCount; i++) {
+        const angle = Math.PI * (i / segmentCount); // 반원을 30개로 나눔
+        slopeVertices.push({
+          x: centerX + radius * Math.cos(angle),
+          y: centerY - radius * Math.sin(angle), // Y 좌표를 반전 (-를 추가)
+        });
+      }
+
+      // fromVertices 함수에서 이중 배열로 감싸기
+      const roundedSlope = Matter.Bodies.fromVertices(
+        centerX,
+        centerY,
+        [slopeVertices], // <- 이중 배열로 감싸줍니다.
+        {
+          isStatic: true,
+          render: { fillStyle: '#6b7280' },
+          label: 'rounded_slope',
+        },
+        true // 자동 최적화
+      );
+
+      const star = Matter.Bodies.trapezoid(750, 380, 20, 20, 1, {
+        render: { fillStyle: '#fbbf24' },
+        label: 'balloon',
+        isStatic: true,
+      });
+
+      Matter.World.add(world, [
+        ...walls,
+        ball,
+        star,
+        // slope,
+        pillar1,
+        pillar2,
+        pillar3,
+        roundedSlope,
+      ]);
+
+      ballRef.current = ball;
+    } else if (currentLevel === 9) {
+      const walls = [
+        Matter.Bodies.rectangle(400, 610, 810, 20, { isStatic: true, label: 'wall_bottom' }),
+        Matter.Bodies.rectangle(400, -10, 810, 20, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(-10, 300, 20, 620, { isStatic: true, label: 'wall' }),
+        Matter.Bodies.rectangle(810, 300, 20, 620, { isStatic: true, label: 'wall' }),
+      ];
+    
+      // Ball setup
+      const ball = Matter.Bodies.circle(150, 500, 15, {
+        render: { fillStyle: '#ef4444' },
+        label: 'ball',
+        restitution: 0.3,
+        friction: 0.05,
+        frictionAir: 0.01,
+      });
+      initialBallPositionRef.current = { x: 150, y: 500 };
 
       const horizontalPlatform = Matter.Bodies.rectangle(150, 550, 150, 100, {
         isStatic: true,
@@ -721,17 +948,202 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
     //   Matter.World.clear(world, false);
     //   Matter.Engine.clear(engineRef.current);
     // };
-  }, [currentLevel, resetTrigger]);
+  }, [currentLevel, resetTrigger]);  
+
+  const createPhysicsBody = (points: Matter.Vector[], myGenerated?: boolean, customId?: string) => {
+    if (points.length < 2) return null;
+    console.log("object generated");
+
+    const logInfo: LogInfo = {
+      player_number: currentTurn === "player1" ? 1 : 2,
+      type: 'draw',
+      timestamp: new Date(),
+    };
+    saveLog(logInfo);
+  
+    // Simplify the path to reduce physics complexity
+    const simplified = points.filter((point, index) => {
+      if (index === 0 || index === points.length - 1) return true;
+      const prev = points[index - 1];
+      const dist = Math.hypot(point.x - prev.x, point.y - prev.y);
+      return dist > 2;
+    });
+  
+    // Check if points are in a nearly straight line by comparing distances
+    if (simplified.length === 2) {
+      const [start, end] = simplified;
+      const distance = Math.hypot(end.x - start.x, end.y - start.y);
+      const angle = Math.atan2(end.y - start.y, end.x - start.x);
+  
+      // Create a thin rectangle to represent the line
+      return Matter.Bodies.rectangle(
+        (start.x + end.x) / 2, // Center X
+        (start.y + end.y) / 2, // Center Y
+        distance, // Width of the line (distance between points)
+        2, // Very small height to simulate a line
+        {
+          angle,
+          render: {
+            fillStyle: '#3b82f6',
+            strokeStyle: '#1d4ed8',
+            lineWidth: 1,
+          },
+          isStatic: false, // 사물이 떨어지도록 설정
+          friction: 0.8,
+          frictionStatic: 1,
+          restitution: 0.2,
+          density: 0.01,
+          label: customId || `custom_${Date.now()}`, // Assign customId
+        }
+      );
+    }
+  
+    // For shapes with more points, create a closed polygonal body
+    const vertices = [...simplified];
+    if (vertices.length >= 3) {
+      const bodyOptions = {
+        render: {
+          fillStyle: '#3b82f6',
+          strokeStyle: '#1d4ed8',
+          lineWidth: 1,
+        },
+        isStatic: false, // 사물이 떨어지도록 설정
+        friction: 0.8,
+        frictionStatic: 1,
+        restitution: 0.2,
+        density: 0.005, // 밀도를 낮추어 떨어지는 속도를 줄임
+        frictionAir: 0.02, // 공중 저항을 높임
+        label: customId || `custom_${Date.now()}`, // Assign customId
+      };
+  
+      // Use the center of mass as the initial position
+      const centroidX = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length;
+      const centroidY = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length;
+  
+      const translatedVertices = vertices.map(v => ({
+        x: v.x - centroidX,
+        y: v.y - centroidY,
+      }));
+  
+      const body = Matter.Bodies.fromVertices(centroidX, centroidY, [translatedVertices], bodyOptions);
+      
+      if (body && myGenerated) {
+        // 도형 데이터를 서버로 전송
+        const customId = body.label; // Use the label as the customId
+        socket.emit('drawShape', { points: simplified, playerId: 'player1', customId });
+      }
+
+      return body;
+    }
+  
+    return null;
+  };
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current) return;
+    
+    const rect = canvasRef.current.getBoundingClientRect();
+    // console.log("rect.left: ", rect.left)
+    // console.log("rect.right: ", rect.right)
+    // console.log("rect.top: ", rect.top)
+    // console.log("rect.bottom: ", rect.bottom)
+    const point = {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+
+    if (tool === 'eraser') {
+      const bodies = Matter.Composite.allBodies(engineRef.current.world);
+      const mousePosition = { x: point.x, y: point.y };
+      
+      for (let body of bodies) {
+        if (Matter.Bounds.contains(body.bounds, mousePosition) &&
+            !staticObjects.includes(body.label)) {
+          Matter.World.remove(engineRef.current.world, body);
+
+          const customId = body.label; // Use customId for deletion
+
+          // 서버에 삭제 요청 전송
+          socket.emit('erase', {
+            customId,
+            playerId: 'player1',
+          });
+          
+          // 턴 전환 로직
+          setCurrentTurn((prevTurn) => (prevTurn === "player1" ? "player2" : "player1"));
+          
+          const logInfo: LogInfo = {
+            player_number: currentTurn === "player1" ? 1 : 2,
+            type: 'erase',
+            timestamp: new Date(),
+          };
+          saveLog(logInfo);
+
+          break;
+        }
+      }
+      return;
+    }
+    console.log("pushLock: ", pushLock);
+
+    if (tool === 'push' && ballRef.current && !pushLock) {
+      // push 남용 방지
+      setPushLock(true);
+      
+      const logInfo: LogInfo = {
+        player_number: currentTurn === "player1" ? 1 : 2,
+        type: 'push',
+        timestamp: new Date(),
+      };
+      saveLog(logInfo);
+
+      // 턴 전환 로직
+      setCurrentTurn((prevTurn) => (prevTurn === "player1" ? "player2" : "player1"));
+
+      const ball = ballRef.current;
+      const ballX = ball.position.x;
+
+      // 공의 중심에서 클릭한 위치까지의 거리 계산
+      const clickOffsetX = point.x - ballX;
+
+      // 클릭한 위치가 공의 왼쪽인지 오른쪽인지 판단
+      // if (clickOffsetX < 0) {
+      //   // 왼쪽을 클릭하면 오른쪽으로 힘을 가함
+      //   Matter.Body.applyForce(ball, ball.position, { x: 0.008, y: 0 });
+      // } else {
+      //   // 오른쪽을 클릭하면 왼쪽으로 힘을 가함
+      //   Matter.Body.applyForce(ball, ball.position, { x: -0.008, y: 0 });
+      // }
+      // 클릭 위치에 따라 힘 계산
+      const force = clickOffsetX < 0 ? { x: 0.008, y: 0 } : { x: -0.008, y: 0 };
+
+      // 공에 힘을 가함
+      Matter.Body.applyForce(ball, ball.position, force);
+
+      // 서버에 힘 적용 요청 전송
+      socket.emit('push', {
+        force,
+        playerId: 'player1',
+      });
+    }
+
+    setIsDrawing(true);
+    setDrawPoints([point]);
+  };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isDrawing || !canvasRef.current || tool === 'eraser') return;
+    if (!canvasRef.current) return;
   
     const rect = canvasRef.current.getBoundingClientRect();
     let point = {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
     };
-    setDrawPoints((prev) => [...prev, point]);
+
+    // 서버로 마우스 위치 전송
+    socket.emit('mouseMove', { x: point.x, y: point.y, playerId: 'player1' });
+
+    if(!isDrawing || tool === 'eraser') return;
     // console.log("point.y: ", point.y)
     // console.log("rect.left: ", rect.left)
     // console.log("rect.right: ", rect.right)
@@ -790,33 +1202,33 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
   };
   
   const handleMouseUp = () => {
-    if (!isDrawing || drawPoints.length < 2 || tool !== 'pen') {
-      setIsDrawing(false);
-      setDrawPoints([]);
-      return;
-    }
+    // if (tool === 'eraser' || drawPoints.length < 2) {
+    //   setIsDrawing(false);
+    //   setDrawPoints([]);
+
+    //   return;
+    // }
   
-    const body = createPhysicsBody(drawPoints);
-    if (body) {
-      Matter.World.add(engineRef.current.world, body);
-      sendData({ type: 'create_body', points: drawPoints });
+    if (tool === 'pen') {
+      const body = createPhysicsBody(drawPoints, true);
+      if (body) {
+        Matter.World.add(engineRef.current.world, body);
+        // 턴 전환 로직
+        setCurrentTurn((prevTurn) => (prevTurn === "player1" ? "player2" : "player1"));
+      }
     }
   
     setIsDrawing(false);
     setDrawPoints([]);
-    endTurn();
-  };
-
-  const endTurn = () => {
-    const nextTurn = currentTurn === 'player1' ? 'player2' : 'player1';
-    setCurrentTurn(nextTurn);
-    sendData({ type: 'turn_end', nextTurn });
   };
 
   const handleToolChange = (newTool: 'pen' | 'eraser' | 'pin' | 'push') => {
     setTool(newTool);
     setIsDrawing(false);
     setDrawPoints([]);
+
+    // 서버로 tool 변경 전송
+    socket.emit('changeTool', { tool: newTool, playerId: 'player1' });
   };
 
   // const handleLevelChange = (direction: 'prev' | 'next') => {
@@ -825,14 +1237,36 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
   const handleLevelChange = (direction: 'prev' | 'next') => {
     if (direction === 'next') {
       if (currentLevel < TOTAL_LEVELS) {
+        const newLevel = currentLevel + 1;
         setCurrentLevel(prev => prev + 1);
         setGameEnded(false); // 게임 종료 상태 초기화
+
+        const logInfo: LogInfo = {
+          player_number: currentTurn === "player1" ? 1 : 2,
+          type: 'move_next_level',
+          timestamp: new Date(),
+        };
+        saveLog(logInfo)
+
+        // 서버로 레벨 변경 전송
+        socket.emit('changeLevel', { level: newLevel, direction, playerId: 'player1' });
       } else {
         // showTemporaryMessage("실험이 마지막 스테이지입니다");
       }
     } else {
       if (currentLevel > 1) {
+        const newLevel = currentLevel - 1;
         setCurrentLevel(prev => prev - 1);
+        
+        const logInfo: LogInfo = {
+          player_number: currentTurn === "player1" ? 1 : 2,
+          type: 'move_prev_level',
+          timestamp: new Date(),
+        };
+        saveLog(logInfo)
+
+        // 서버로 레벨 변경 전송
+        socket.emit('changeLevel', { level: newLevel, direction, playerId: 'player1' });
       } else {
         // showTemporaryMessage("첫 스테이지입니다");
       }
@@ -841,10 +1275,14 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
 
   const handleNextLevel = () => {
     if (currentLevel < TOTAL_LEVELS) {
+      const newLevel = currentLevel + 1;
       setCurrentLevel((prevLevel) => prevLevel + 1)
       setGameEnded(false); // 게임 종료 상태 초기화
+      
+      // 서버로 레벨 변경 전송
+      socket.emit('changeLevel', { level: newLevel, playerId: 'player1' });
     } else {
-      setCurrentLevel((prevLevel) => prevLevel)
+      // setCurrentLevel((prevLevel) => prevLevel)
       setGameEnded(false); // 게임 종료 상태 초기화
     }
   }
@@ -865,12 +1303,55 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
     
     // 현재 레벨에 대한 설정을 다시 불러옴
     setCurrentLevel(currentLevel); // 이로 인해 useEffect가 실행됨
+
+    const logInfo: LogInfo = {
+      player_number: currentTurn === "player1" ? 1 : 2,
+      type: 'refresh',
+      timestamp: new Date(),
+    };
+    saveLog(logInfo);
+
+    // 서버로 초기화 이벤트 전송
+    socket.emit('resetLevel', { level: currentLevel });
   };
+
+  // 누적해서 csv 파일 업데이트
+  const saveLog = async (logInfo: LogInfo) => {
+    try {
+      console.log("ddd: ", {
+        player_number: logInfo.player_number,
+        type: logInfo.type,
+        timestamp: logInfo.timestamp.toISOString(), // Convert timestamp to ISO format
+      })
+      await axios.post('https://13.239.234.81.nip.io/logger/log', {
+        player_number: logInfo.player_number,
+        type: logInfo.type,
+        timestamp: logInfo.timestamp.toISOString(), // Convert timestamp to ISO format
+      });
+      console.log('Log saved successfully');
+    } catch (error) {
+      console.error('Failed to save log:', error);
+    }
+  }
+
+  // const drawOtherPlayerCursor = (x: number, y: number, playerId: string) => {
+  //   const canvas = canvasRef.current;
+  //   if (!canvas) return;
+  //   const ctx = canvas.getContext('2d');
+  //   if (!ctx) return;
+
+  //   // 캔버스를 지우지 않으면 기존 커서와 겹칠 수 있음
+  //   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  //   ctx.beginPath();
+  //   ctx.arc(x, y, 5, 0, Math.PI * 2); // 커서 그리기
+  //   ctx.fillStyle = playerId === 'player1' ? 'blue' : 'red'; // 플레이어에 따라 색상 다르게
+  //   ctx.fill();
+  // };
 
   return (
     <div className="flex flex-col items-center gap-4">
       <div className="flex gap-4 mb-4">
-        <span className="p-2 text-xl">{currentTurn === 'player1' ? "Your Turn" : "Opponent's Turn"}</span>
         <button
           onClick={() => resetLevel()}
           className={`p-2 rounded 'bg-gray-200'`}
@@ -893,14 +1374,14 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
         >
           <Eraser size={24} />
         </button>
-        <button
+        {/* <button
           onClick={() => handleToolChange('pin')}
           className={`p-2 rounded ${
             tool === 'pin' ? 'bg-blue-500 text-white' : 'bg-gray-200'
           }`}
         >
           <Pin size={24} />
-        </button>
+        </button> */}
         {/* 밀기 도구 버튼 */}
         <button
           onClick={() => handleToolChange('push')}
@@ -919,8 +1400,19 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
           <Hand size={22} style={{ position: 'relative', left: '8px', zIndex: 2, transform: 'rotate(-20deg)' }} />
         </button>
       </div>
-
+{/* 
+      <div className="flex items-center justify-between gap-4">
+        <h2
+          className={`text-lg font-bold ${
+            currentTurn === 'player1' ? 'text-blue-500' : 'text-red-500'
+          }`}
+        >
+          {currentTurn === 'player1' ? "Player1 Turn" : "Player2 Turn"}
+        </h2>
+      </div> */}
+      
       <div className="relative">
+        {/* 메인 캔버스 (게임 플레이) */}
         <canvas
           ref={canvasRef}
           width={800}
@@ -931,6 +1423,17 @@ const PhysicsCanvas: React.FC<PhysicsCanvasProps> = ({ playerRole }) => {
           onMouseLeave={handleMouseUp}
           className="border border-gray-300 rounded-lg shadow-lg"
           style={{ cursor: tool === 'eraser' ? 'crosshair' : 'default' }}
+        />
+
+        {/* 커서를 표시하는 별도의 캔버스 */}
+        <canvas
+          ref={cursorCanvasRef}
+          width={800}
+          height={600}
+          className="absolute top-0 left-0 border border-transparent pointer-events-none"
+          style={{
+            zIndex: 10, // 게임 캔버스 위에 렌더링
+          }}
         />
         
         {isDrawing && tool === 'pen' && (
